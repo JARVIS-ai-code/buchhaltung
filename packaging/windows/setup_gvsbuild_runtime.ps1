@@ -4,33 +4,19 @@ param(
   [string]$TargetRoot = "C:\gtk"
 )
 
-$headers = @{ "User-Agent" = "jarvis-buchhaltung-ci" }
-
-Write-Host "Lade aktuelle GTK4-Runtime (gvsbuild) ..."
-$release = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/wingtk/gvsbuild/releases/latest"
-$asset = $release.assets | Where-Object { $_.name -match '^GTK4_Gvsbuild_.*_x64\.zip$' } | Select-Object -First 1
-
-if (-not $asset) {
-  $fallbackName = "GTK4_Gvsbuild_$($release.tag_name)_x64.zip"
-  $fallbackUrl = "https://github.com/wingtk/gvsbuild/releases/download/$($release.tag_name)/$fallbackName"
-  Write-Warning "Asset-Matching fehlgeschlagen, nutze Fallback: $fallbackUrl"
-  $asset = [pscustomobject]@{
-    name = $fallbackName
-    browser_download_url = $fallbackUrl
-  }
-}
-
+$downloadUrl = "https://github.com/wingtk/gvsbuild/releases/latest/download/GTK4_Gvsbuild_latest_x64.zip"
 $tempDir = Join-Path $env:TEMP "gvsbuild-gtk4-runtime"
-$zipPath = Join-Path $tempDir $asset.name
+$zipPath = Join-Path $tempDir "GTK4_Gvsbuild_latest_x64.zip"
 $extractDir = Join-Path $tempDir "extract"
+
+Write-Host "Lade aktuelle GTK4-Runtime (gvsbuild): $downloadUrl"
 
 if (Test-Path $tempDir) {
   Remove-Item $tempDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 
-Write-Host "Download: $($asset.browser_download_url)"
-Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $zipPath
+Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
 Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
 $runtimeRoot = Get-ChildItem -Path $extractDir -Recurse -Directory |
@@ -70,13 +56,15 @@ if (Test-Path (Join-Path $TargetRoot "wheels")) {
 $pygObjectWheel = $wheelCandidates | Where-Object { $_.Name -match '(?i)^pygobject.*\.whl$' } | Sort-Object Name -Descending | Select-Object -First 1
 $pyCairoWheel = $wheelCandidates | Where-Object { $_.Name -match '(?i)^pycairo.*\.whl$' } | Sort-Object Name -Descending | Select-Object -First 1
 
-if (-not $pygObjectWheel -or -not $pyCairoWheel) {
-  throw "PyGObject/pycairo Wheels nicht gefunden."
+if ($pygObjectWheel -and $pyCairoWheel) {
+  Write-Host "Installiere Wheels: $($pygObjectWheel.Name), $($pyCairoWheel.Name)"
+  python -m pip install --upgrade pip
+  python -m pip install --force-reinstall "$($pygObjectWheel.FullName)"
+  python -m pip install --force-reinstall "$($pyCairoWheel.FullName)"
+} else {
+  Write-Warning "PyGObject/pycairo Wheels im Runtime-ZIP nicht gefunden. Versuche pip fallback."
+  python -m pip install --upgrade pip
+  python -m pip install pycairo PyGObject
 }
-
-Write-Host "Installiere Wheels: $($pygObjectWheel.Name), $($pyCairoWheel.Name)"
-python -m pip install --upgrade pip
-python -m pip install --force-reinstall "$($pygObjectWheel.FullName)"
-python -m pip install --force-reinstall "$($pyCairoWheel.FullName)"
 
 Write-Host "gvsbuild Runtime ist bereit: $TargetRoot"
