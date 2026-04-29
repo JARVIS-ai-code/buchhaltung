@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import traceback
 import uuid
 import html
 import os
@@ -252,6 +253,17 @@ def parse_bool(value, default: bool = False) -> bool:
         if raw in ("0", "false", "no", "nein", "off"):
             return False
     return default
+
+
+def append_runtime_log(message: str) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = DATA_DIR / "runtime.log"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{timestamp}] {message}\n")
+    except OSError:
+        pass
 
 
 def version_tuple(version_text: str) -> tuple[int, ...]:
@@ -810,7 +822,7 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         else:
             data["settings"]["visible_month"] = month_key(date.today())
 
-        data["settings"]["autostart_enabled"] = parse_bool(data["settings"].get("autostart_enabled"), True)
+        data["settings"]["autostart_enabled"] = parse_bool(data["settings"].get("autostart_enabled"), False)
         data["settings"]["autostart_open_window"] = parse_bool(data["settings"].get("autostart_open_window"), False)
         interval_raw = data["settings"].get("reminder_interval_minutes", 15)
         try:
@@ -887,7 +899,7 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         return isinstance(closed, list) and month in closed
 
     def autostart_enabled(self) -> bool:
-        return parse_bool(self.data["settings"].get("autostart_enabled"), True)
+        return parse_bool(self.data["settings"].get("autostart_enabled"), False)
 
     def should_open_window_on_autostart(self) -> bool:
         return parse_bool(self.data["settings"].get("autostart_open_window"), False)
@@ -4176,13 +4188,14 @@ class FinanceAppWindow(Adw.ApplicationWindow):
 
 
 class FinanceApp(Adw.Application):
-    def __init__(self, launched_from_autostart: bool = False) -> None:
+    def __init__(self, launched_from_autostart: bool = False, start_visible: bool = False) -> None:
         super().__init__(
             application_id="com.jarvis.buchhaltung",
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
         )
         self.launched_from_autostart = launched_from_autostart
         self.autostart_launch_handled = False
+        self.pending_show_request = bool(start_visible)
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
@@ -4202,22 +4215,30 @@ class FinanceApp(Adw.Application):
 
         if self.launched_from_autostart and not self.autostart_launch_handled:
             self.autostart_launch_handled = True
-            if not window.should_open_window_on_autostart():
+            if (not self.pending_show_request) and (not window.should_open_window_on_autostart()):
                 window.set_visible(False)
                 window.check_overdue_notifications(force=True)
                 return
 
         window.set_visible(True)
         window.present()
+        self.pending_show_request = False
 
     def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
         args = command_line.get_arguments()[1:]
         force_show = "--show" in args
         autostart_request = "--autostart" in args
+        service_request = "--gapplication-service" in args
 
         window = self.props.active_window
         if window is None:
+            # Race-safe: if the first remote activation is a normal/manual launch, force visible UI.
+            self.pending_show_request = force_show or (not autostart_request and not service_request)
             self.activate()
+            window = self.props.active_window
+            if window is not None and self.pending_show_request:
+                window.set_visible(True)
+                window.present()
         else:
             if force_show:
                 window.set_visible(True)
@@ -4228,16 +4249,31 @@ class FinanceApp(Adw.Application):
             else:
                 window.set_visible(True)
                 window.present()
+        self.pending_show_request = False
         return 0
 
 
 def main() -> None:
     args = sys.argv[1:]
     launched_from_autostart = "--autostart" in args
-    argv = [sys.argv[0]] + [arg for arg in args if arg != "--autostart"]
-    app = FinanceApp(launched_from_autostart=launched_from_autostart)
+    start_visible = "--show" in args
+
+    # Filter app-private launch flags before handing args to GApplication.
+    filtered_args = [arg for arg in args if arg not in ("--autostart", "--show")]
+    argv = [sys.argv[0]] + filtered_args
+
+    append_runtime_log(
+        f"start platform={sys.platform} frozen={getattr(sys, 'frozen', False)} "
+        f"autostart={launched_from_autostart} show={start_visible} args={filtered_args}"
+    )
+
+    app = FinanceApp(launched_from_autostart=launched_from_autostart, start_visible=start_visible)
     app.run(argv)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        append_runtime_log(f"fatal: {exc}\n{traceback.format_exc()}")
+        raise
