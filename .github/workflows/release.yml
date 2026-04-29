@@ -70,6 +70,7 @@ jobs:
           set -euo pipefail
           python -V
           pyinstaller --noconfirm --clean --windowed --name JarvisBuchhaltung --icon "assets/icons/jarvis-buchhaltung.ico" --add-data "version.json;." app.py
+          bash packaging/windows/prepare_msys2_runtime.sh
 
       - name: Build Windows setup exe
         shell: powershell

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PREFIX="${MSYS2_PREFIX:-/ucrt64}"
+TARGET="$ROOT_DIR/dist/JarvisBuchhaltung/runtime"
+
+if [ ! -d "$PREFIX" ]; then
+  echo "MSYS2 prefix nicht gefunden: $PREFIX"
+  exit 1
+fi
+
+mkdir -p "$TARGET/bin"
+mkdir -p "$TARGET/lib/girepository-1.0"
+mkdir -p "$TARGET/share/glib-2.0/schemas"
+mkdir -p "$TARGET/share/icons"
+mkdir -p "$TARGET/share/themes"
+
+# Core runtime DLLs (broad include for GTK4/libadwaita dependency tree).
+cp -f "$PREFIX"/bin/*.dll "$TARGET/bin/" || true
+cp -f "$PREFIX"/bin/gspawn-win64-helper*.exe "$TARGET/bin/" 2>/dev/null || true
+
+# Typelibs needed by gi.repository (Gtk/Adw and dependencies).
+cp -f "$PREFIX"/lib/girepository-1.0/*.typelib "$TARGET/lib/girepository-1.0/" || true
+
+# Runtime data used by GTK/GLib.
+cp -rf "$PREFIX"/share/glib-2.0/schemas/* "$TARGET/share/glib-2.0/schemas/" || true
+cp -rf "$PREFIX"/share/icons/* "$TARGET/share/icons/" || true
+cp -rf "$PREFIX"/share/themes/* "$TARGET/share/themes/" || true
+
+if command -v glib-compile-schemas >/dev/null 2>&1; then
+  glib-compile-schemas "$TARGET/share/glib-2.0/schemas" || true
+fi
+
+echo "GTK runtime vorbereitet unter: $TARGET"

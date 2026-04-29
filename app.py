@@ -17,6 +17,77 @@ from copy import deepcopy
 from datetime import date, datetime
 from pathlib import Path
 
+def _configure_windows_gtk_runtime() -> None:
+    if os.name != "nt":
+        return
+
+    candidate_roots: list[Path] = []
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        meipass = Path(getattr(sys, "_MEIPASS", str(exe_dir)))
+        candidate_roots.extend([exe_dir, exe_dir / "runtime", meipass, meipass / "runtime"])
+    else:
+        here = Path(__file__).resolve().parent
+        candidate_roots.extend([here, here / "runtime"])
+
+    def unique_existing(paths: list[Path]) -> list[Path]:
+        out: list[Path] = []
+        seen: set[str] = set()
+        for p in paths:
+            key = str(p.resolve()) if p.exists() else str(p)
+            if key in seen or (not p.exists()):
+                continue
+            seen.add(key)
+            out.append(p)
+        return out
+
+    roots = unique_existing(candidate_roots)
+    if not roots:
+        return
+
+    dll_dirs: list[Path] = []
+    typelib_dirs: list[Path] = []
+    share_dirs: list[Path] = []
+    schema_dirs: list[Path] = []
+
+    for root in roots:
+        bin_dir = root / "bin"
+        typelibs = root / "lib" / "girepository-1.0"
+        share_dir = root / "share"
+        schemas = share_dir / "glib-2.0" / "schemas"
+
+        if bin_dir.exists():
+            dll_dirs.append(bin_dir)
+        if typelibs.exists():
+            typelib_dirs.append(typelibs)
+        if share_dir.exists():
+            share_dirs.append(share_dir)
+        if schemas.exists():
+            schema_dirs.append(schemas)
+
+    for dll_dir in dll_dirs:
+        try:
+            os.add_dll_directory(str(dll_dir))
+        except (AttributeError, OSError):
+            pass
+
+    if dll_dirs:
+        os.environ["PATH"] = os.pathsep.join([str(p) for p in dll_dirs] + [os.environ.get("PATH", "")])
+
+    if typelib_dirs:
+        current = os.environ.get("GI_TYPELIB_PATH", "")
+        os.environ["GI_TYPELIB_PATH"] = os.pathsep.join([str(p) for p in typelib_dirs] + ([current] if current else []))
+
+    if share_dirs:
+        current = os.environ.get("XDG_DATA_DIRS", "")
+        os.environ["XDG_DATA_DIRS"] = os.pathsep.join([str(p) for p in share_dirs] + ([current] if current else []))
+
+    if schema_dirs and not os.environ.get("GSETTINGS_SCHEMA_DIR"):
+        os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dirs[0])
+
+
+_configure_windows_gtk_runtime()
+
 import gi
 
 gi.require_version("Gtk", "4.0")

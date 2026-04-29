@@ -16,6 +16,14 @@ python -m PyInstaller `
   --add-data "version.json;." `
   app.py
 
+Write-Host "Bündle GTK Runtime für Windows ..."
+$Bash = "C:\msys64\usr\bin\bash.exe"
+if (Test-Path $Bash) {
+  & $Bash "$Root\packaging\windows\prepare_msys2_runtime.sh"
+} else {
+  Write-Warning "MSYS2 bash nicht gefunden. Runtime-Bündelung wurde übersprungen."
+}
+
 Write-Host "Erzeuge Installer (Inno Setup) ..."
 $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 if (!(Test-Path $Iscc)) {
