@@ -287,7 +287,7 @@ class DonutChart(Gtk.Box):
 class FinanceAppWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, launched_from_autostart: bool = False) -> None:
         super().__init__(application=app)
-        self.set_title("Buchhaltung - Bento UI")
+        self.set_title("JARVIS Buchhaltungssystem")
         self.set_icon_name(APP_ICON_NAME)
         self.set_default_size(1280, 820)
         self.set_resizable(True)
@@ -325,6 +325,7 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         self.update_popup_asset_name = ""
         self.update_popup_asset_url = ""
         self.update_download_in_progress = False
+        self.update_install_in_progress = False
 
         self._setup_css()
         self._build_ui()
@@ -1109,14 +1110,18 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         nav_items = [
-            ("start", "Start", "go-home-symbolic"),
-            ("accounts", "Konten", "wallet-symbolic"),
-            ("analysis", "Analyse", "view-statistics-symbolic"),
-            ("settings", "Einstellungen", "emblem-system-symbolic"),
+            ("start", "Start", ["go-home-symbolic", "user-home-symbolic", "applications-system-symbolic"]),
+            ("accounts", "Konten", ["wallet-symbolic", "folder-symbolic", "applications-office-symbolic"]),
+            (
+                "analysis",
+                "Analyse",
+                ["view-statistics-symbolic", "utilities-system-monitor-symbolic", "x-office-spreadsheet-symbolic"],
+            ),
+            ("settings", "Einstellungen", ["emblem-system-symbolic", "preferences-system-symbolic"]),
         ]
 
-        for page_name, label, icon_name in nav_items:
-            button = self._nav_button(label, icon_name, page_name)
+        for page_name, label, icon_candidates in nav_items:
+            button = self._nav_button(label, icon_candidates, page_name)
             self.nav_buttons[page_name] = button
             sidebar.append(button)
 
@@ -1138,11 +1143,21 @@ class FinanceAppWindow(Adw.ApplicationWindow):
 
         return sidebar
 
-    def _nav_button(self, label: str, icon_name: str, page_name: str) -> Gtk.Button:
+    def _resolve_icon_name(self, candidates: list[str]) -> str:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return candidates[0]
+        theme = Gtk.IconTheme.get_for_display(display)
+        for name in candidates:
+            if theme.has_icon(name):
+                return name
+        return candidates[0]
+
+    def _nav_button(self, label: str, icon_candidates: list[str], page_name: str) -> Gtk.Button:
         button = Gtk.Button()
         button.add_css_class("nav-button")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        icon = Gtk.Image.new_from_icon_name(icon_name)
+        icon = Gtk.Image.new_from_icon_name(self._resolve_icon_name(icon_candidates))
         icon.set_pixel_size(18)
         text = Gtk.Label(label=label)
         text.set_xalign(0)
@@ -1440,6 +1455,11 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         self.manual_update_check_btn.add_css_class("solid")
         self.manual_update_check_btn.connect("clicked", self.on_manual_update_check)
         settings_card.content.append(self.manual_update_check_btn)
+
+        self.current_version_label = Gtk.Label(label=f"Aktuelle Version: {APP_VERSION}")
+        self.current_version_label.set_xalign(0)
+        self.current_version_label.add_css_class("subtitle")
+        settings_card.content.append(self.current_version_label)
 
         settings_card.content.append(Gtk.Box(vexpand=True))
 
@@ -3589,7 +3609,9 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         if self.update_popup_details is not None:
             self.update_popup_details.set_text(details_text)
         if self.update_popup_install_btn is not None:
-            self.update_popup_install_btn.set_sensitive(not self.update_download_in_progress)
+            self.update_popup_install_btn.set_sensitive(
+                (not self.update_download_in_progress) and (not self.update_install_in_progress)
+            )
 
         self.update_popup.present()
         self.toast(f"Update verfügbar: {latest_tag}")
@@ -3605,6 +3627,9 @@ class FinanceAppWindow(Adw.ApplicationWindow):
     def on_install_update_clicked(self, _button: Gtk.Button) -> None:
         if self.update_download_in_progress:
             self.toast("Update-Download läuft bereits.")
+            return
+        if self.update_install_in_progress:
+            self.toast("Update-Installation läuft bereits.")
             return
         if not self.update_popup_asset_url:
             self.toast("Kein Update-Paket ausgewählt.")
@@ -3647,7 +3672,11 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         if self.update_popup_install_btn is not None:
             self.update_popup_install_btn.set_sensitive(True)
         if not result.get("ok"):
-            self.toast("Update-Download fehlgeschlagen.")
+            error_text = str(result.get("error", "")).strip()
+            if error_text:
+                self.toast(f"Update-Download fehlgeschlagen: {error_text}")
+            else:
+                self.toast("Update-Download fehlgeschlagen.")
             return False
 
         update_path = str(result.get("path", "")).strip()
@@ -3655,12 +3684,80 @@ class FinanceAppWindow(Adw.ApplicationWindow):
             self.toast("Update-Datei fehlt.")
             return False
 
-        launched = self.launch_update_installer(Path(update_path))
+        update_file = Path(update_path)
+        if os.name != "nt" and update_file.name.lower().endswith(".deb"):
+            self._start_linux_deb_install(update_file)
+            return False
+
+        launched = self.launch_update_installer(update_file)
         if not launched:
             self.toast("Update konnte nicht gestartet werden.")
             return False
 
         self.toast("Update gestartet. App wird beendet.")
+        self.is_closing = True
+        app = self.get_application()
+        if app is not None:
+            app.quit()
+        return False
+
+    def _start_linux_deb_install(self, update_path: Path) -> None:
+        if self.update_install_in_progress:
+            return
+        self.update_install_in_progress = True
+        if self.update_popup_install_btn is not None:
+            self.update_popup_install_btn.set_sensitive(False)
+        self.toast("Update wird installiert. Bitte Admin-Freigabe bestätigen.")
+        worker = threading.Thread(target=self._install_linux_deb_thread, args=(str(update_path),), daemon=True)
+        worker.start()
+
+    def _install_linux_deb_thread(self, update_path: str) -> None:
+        result = {"ok": False, "error": "", "opened": False}
+        path = Path(update_path)
+        try:
+            cmd: list[str] | None = None
+            if shutil.which("pkexec"):
+                cmd = ["pkexec", "dpkg", "-i", str(path)]
+            elif hasattr(os, "geteuid") and os.geteuid() == 0:
+                cmd = ["dpkg", "-i", str(path)]
+
+            if cmd is not None:
+                proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                if proc.returncode == 0:
+                    result["ok"] = True
+                else:
+                    err = (proc.stderr or proc.stdout or "").strip()
+                    if not err:
+                        err = f"dpkg Fehlercode {proc.returncode}"
+                    result["error"] = err[-500:]
+            elif shutil.which("xdg-open"):
+                subprocess.Popen(["xdg-open", str(path)])
+                result["opened"] = True
+            else:
+                result["error"] = "Weder pkexec noch xdg-open verfügbar."
+        except OSError as exc:
+            result["error"] = str(exc)
+
+        GLib.idle_add(self._handle_linux_deb_install_result, result)
+
+    def _handle_linux_deb_install_result(self, result: dict) -> bool:
+        self.update_install_in_progress = False
+        if self.update_popup_install_btn is not None:
+            self.update_popup_install_btn.set_sensitive(True)
+
+        if result.get("opened"):
+            self.toast("Update-Paket geöffnet. Bitte Installation abschließen.")
+            return False
+
+        if not result.get("ok"):
+            error_text = str(result.get("error", "")).strip()
+            if error_text:
+                self.toast(f"Update-Installation fehlgeschlagen: {error_text}")
+            else:
+                self.toast("Update-Installation fehlgeschlagen.")
+            return False
+
+        self.toast("Update installiert. App wird beendet.")
         self.is_closing = True
         app = self.get_application()
         if app is not None:
