@@ -2561,11 +2561,14 @@ class FinanceAppWindow(Adw.ApplicationWindow):
                 self.closed_months_listbox.append(row)
 
         self._clear_container(self.accounts_listbox)
+        account_icon_name = self._resolve_icon_name(
+            ["wallet-symbolic", "folder-symbolic", "applications-office-symbolic", "user-home-symbolic"]
+        )
         for account in self.data["accounts"]:
             row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
             row_box.add_css_class("account-row")
 
-            icon = Gtk.Image.new_from_icon_name("wallet-symbolic")
+            icon = Gtk.Image.new_from_icon_name(account_icon_name)
             icon.set_pixel_size(18)
             row_box.append(icon)
 
@@ -3181,6 +3184,8 @@ class FinanceAppWindow(Adw.ApplicationWindow):
 
         for recurring in self.data["recurring_payments"]:
             for due_month in self.iter_due_months_until_today(recurring, current_month):
+                if self.month_is_closed(due_month):
+                    continue
                 if self.is_recurring_checked_for_month(recurring, due_month):
                     continue
                 year_text, month_text = due_month.split("-")
