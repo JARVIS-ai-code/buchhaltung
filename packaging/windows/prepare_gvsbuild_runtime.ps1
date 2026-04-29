@@ -1,8 +1,8 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$Prefix = "C:\gtk"
 )
+
+$ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $Target = Join-Path $Root "dist\JarvisBuchhaltung\runtime"

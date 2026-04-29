@@ -1,8 +1,8 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$TargetRoot = "C:\gtk"
 )
+
+$ErrorActionPreference = "Stop"
 
 $downloadUrl = "https://github.com/wingtk/gvsbuild/releases/latest/download/GTK4_Gvsbuild_latest_x64.zip"
 $tempDir = Join-Path $env:TEMP "gvsbuild-gtk4-runtime"
