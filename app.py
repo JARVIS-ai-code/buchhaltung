@@ -1028,6 +1028,35 @@ class FinanceAppWindow(Adw.ApplicationWindow):
           border: 1px solid rgba(255, 255, 255, 0.09);
         }}
 
+        .settings-account-icon {{
+          color: #ececff;
+          opacity: 1;
+        }}
+
+        .settings-account-name {{
+          color: #f4f5ff;
+          font-weight: 600;
+        }}
+
+        popover.menu-popover contents {{
+          background: rgba(24, 24, 31, 0.98);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 14px;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
+        }}
+
+        popover.menu-popover button {{
+          color: #f3f4ff;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 10px;
+        }}
+
+        popover.menu-popover button:hover {{
+          background: rgba(138, 92, 255, 0.24);
+          border-color: rgba(138, 92, 255, 0.58);
+        }}
+
         .muted {{
           color: #a2a2b3;
         }}
@@ -2570,11 +2599,13 @@ class FinanceAppWindow(Adw.ApplicationWindow):
 
             icon = Gtk.Image.new_from_icon_name(account_icon_name)
             icon.set_pixel_size(18)
+            icon.add_css_class("settings-account-icon")
             row_box.append(icon)
 
             name = Gtk.Label(label=account["name"])
             name.set_xalign(0)
             name.set_hexpand(True)
+            name.add_css_class("settings-account-name")
             row_box.append(name)
 
             delete_btn = Gtk.Button(label="Löschen")
@@ -2811,6 +2842,7 @@ class FinanceAppWindow(Adw.ApplicationWindow):
             menu_btn = Gtk.MenuButton()
             menu_btn.set_icon_name("open-menu-symbolic")
             popover = Gtk.Popover()
+            popover.add_css_class("menu-popover")
             pop_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             pop_box.set_margin_top(8)
             pop_box.set_margin_bottom(8)
@@ -3783,11 +3815,29 @@ class FinanceAppWindow(Adw.ApplicationWindow):
             return False
 
         self.toast("Update installiert. App wird beendet.")
+        self.restart_after_successful_update()
         self.is_closing = True
         app = self.get_application()
         if app is not None:
             app.quit()
         return False
+
+    def restart_after_successful_update(self) -> None:
+        try:
+            if os.name == "nt":
+                exe_path = Path(sys.executable)
+                if exe_path.name.lower().endswith(".exe") and exe_path.stem.lower() != "python":
+                    subprocess.Popen([str(exe_path)], close_fds=True)
+                else:
+                    subprocess.Popen([sys.executable, str(PROJECT_DIR / "app.py")], close_fds=True)
+                return
+
+            if shutil.which("jarvis-buchhaltung"):
+                subprocess.Popen(["jarvis-buchhaltung"], start_new_session=True)
+            else:
+                subprocess.Popen([sys.executable, str(PROJECT_DIR / "app.py")], start_new_session=True)
+        except OSError:
+            self.toast("Neustart nach Update konnte nicht automatisch gestartet werden.")
 
     def launch_update_installer(self, update_path: Path) -> bool:
         name = update_path.name.lower()
