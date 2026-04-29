@@ -3,7 +3,6 @@
 ## Version pflegen
 
 Die App-Version kommt aus `version.json`.
-Vor jedem Release zuerst diese Datei anpassen, z. B. `1.2.0`.
 
 ## Linux (.deb)
 
@@ -15,12 +14,6 @@ packaging/linux/build_deb.sh
 Ergebnis:
 - `dist/deb/jarvis-buchhaltung_<version>_amd64.deb`
 
-Installieren:
-
-```bash
-sudo dpkg -i dist/deb/jarvis-buchhaltung_<version>_amd64.deb
-```
-
 ## Windows (Setup.exe)
 
 Auf Windows in PowerShell:
@@ -30,12 +23,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\packaging\windows\build_windows.ps1
 ```
 
-Voraussetzungen:
-- MSYS2 unter `C:\msys64`
-- Inno Setup 6
-
-Der Build nutzt `MSYS2 UCRT64` für Python/GTK/PyGObject und bündelt die Runtime
-in `dist/JarvisBuchhaltung/runtime`.
+Der Windows-Build nutzt PySide6 + PyInstaller + Inno Setup.
 
 Ergebnis:
 - `dist/windows/jarvis-buchhaltung-<version>-setup.exe`

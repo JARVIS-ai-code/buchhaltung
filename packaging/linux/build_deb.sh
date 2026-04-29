@@ -16,34 +16,36 @@ mkdir -p "$PKG_DIR/usr/share/applications"
 mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$PKG_DIR/usr/share/icons/hicolor/scalable/apps"
 
-cat > "$PKG_DIR/DEBIAN/control" <<EOF
+cat > "$PKG_DIR/DEBIAN/control" <<EOF2
 Package: $PKG_NAME
 Version: $VERSION
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
+Depends: python3, python3-pyside6.qtwidgets | python3-pyside6
 Maintainer: JARVIS-ai-code
-Description: Desktop-Buchhaltung fuer Linux
- Native GTK4-App fuer private Buchhaltung mit Konten, Dauerzahlungen und Analyse.
-EOF
+Description: Desktop-Buchhaltung fuer Linux/Windows
+ Native Buchhaltungs-App mit separatem Linux/Windows UI.
+EOF2
 
 cp "$ROOT_DIR/app.py" "$PKG_DIR/opt/jarvis-buchhaltung/app.py"
+cp "$ROOT_DIR/app_qt.py" "$PKG_DIR/opt/jarvis-buchhaltung/app_qt.py"
+cp "$ROOT_DIR/app_gtk.py" "$PKG_DIR/opt/jarvis-buchhaltung/app_gtk.py"
 cp "$ROOT_DIR/version.json" "$PKG_DIR/opt/jarvis-buchhaltung/version.json"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.png" "$PKG_DIR/opt/jarvis-buchhaltung/assets/icons/jarvis-buchhaltung.png"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.svg" "$PKG_DIR/opt/jarvis-buchhaltung/assets/icons/jarvis-buchhaltung.svg"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/jarvis-buchhaltung.png"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/apps/jarvis-buchhaltung.svg"
 
-cat > "$PKG_DIR/usr/bin/jarvis-buchhaltung" <<'EOF'
+cat > "$PKG_DIR/usr/bin/jarvis-buchhaltung" <<'EOF2'
 #!/usr/bin/env bash
 exec python3 /opt/jarvis-buchhaltung/app.py "$@"
-EOF
+EOF2
 chmod 755 "$PKG_DIR/usr/bin/jarvis-buchhaltung"
 
 cp "$ROOT_DIR/packaging/linux/jarvis-buchhaltung.desktop" "$PKG_DIR/usr/share/applications/jarvis-buchhaltung.desktop"
 
-cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF'
+cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF2'
 #!/usr/bin/env bash
 set -e
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
@@ -52,10 +54,10 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database /usr/share/applications || true
 fi
-EOF
+EOF2
 chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
-cat > "$PKG_DIR/DEBIAN/postrm" <<'EOF'
+cat > "$PKG_DIR/DEBIAN/postrm" <<'EOF2'
 #!/usr/bin/env bash
 set -e
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
@@ -64,7 +66,7 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database /usr/share/applications || true
 fi
-EOF
+EOF2
 chmod 755 "$PKG_DIR/DEBIAN/postrm"
 
 mkdir -p "$BUILD_DIR"
