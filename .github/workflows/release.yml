@@ -62,25 +62,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
 
-      - name: Download gvsbuild GTK4 runtime + wheels
-        shell: powershell
-        run: |
-          .\packaging\windows\setup_gvsbuild_runtime.ps1 -TargetRoot "C:\gtk"
-
-      - name: Build Windows app with PyInstaller
-        shell: powershell
-        run: |
-          python -m PyInstaller --noconfirm --clean --windowed --name JarvisBuchhaltung --icon "assets/icons/jarvis-buchhaltung.ico" --add-data "version.json;." app.py
-          .\packaging\windows\prepare_gvsbuild_runtime.ps1 -Prefix "C:\gtk"
-
       - name: Build Windows setup exe
         shell: powershell
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) {
-            throw "ISCC.exe wurde nicht gefunden."
-          }
-          & $iscc "/DMyAppVersion=$env:APP_VERSION" "packaging\windows\jarvis-buchhaltung.iss"
+          Set-ExecutionPolicy -Scope Process Bypass
+          powershell -ExecutionPolicy Bypass -File .\packaging\windows\build_windows.ps1
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
