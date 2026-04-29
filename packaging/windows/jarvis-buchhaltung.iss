@@ -27,8 +27,8 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 Source: "..\..\dist\JarvisBuchhaltung\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Jarvis Buchhaltung"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\Jarvis Buchhaltung"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autoprograms}\Jarvis Buchhaltung"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--show"
+Name: "{autodesktop}\Jarvis Buchhaltung"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--show"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Jarvis Buchhaltung starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--show"; Description: "Jarvis Buchhaltung starten"; Flags: nowait postinstall skipifsilent

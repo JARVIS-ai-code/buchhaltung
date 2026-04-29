@@ -141,7 +141,7 @@ DEFAULT_DATA = {
         "monthly_budget": 0.0,
         "income_sources": ["Lohn", "Nebentätigkeit", "Spesen"],
         "visible_month": "",
-        "autostart_enabled": True,
+        "autostart_enabled": False,
         "autostart_open_window": False,
         "reminder_interval_minutes": 15,
         "auto_update_check": True,
@@ -4177,7 +4177,10 @@ class FinanceAppWindow(Adw.ApplicationWindow):
 
 class FinanceApp(Adw.Application):
     def __init__(self, launched_from_autostart: bool = False) -> None:
-        super().__init__(application_id="com.jarvis.buchhaltung")
+        super().__init__(
+            application_id="com.jarvis.buchhaltung",
+            flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
+        )
         self.launched_from_autostart = launched_from_autostart
         self.autostart_launch_handled = False
 
@@ -4206,6 +4209,26 @@ class FinanceApp(Adw.Application):
 
         window.set_visible(True)
         window.present()
+
+    def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
+        args = command_line.get_arguments()[1:]
+        force_show = "--show" in args
+        autostart_request = "--autostart" in args
+
+        window = self.props.active_window
+        if window is None:
+            self.activate()
+        else:
+            if force_show:
+                window.set_visible(True)
+                window.present()
+            elif autostart_request and (not window.should_open_window_on_autostart()):
+                window.set_visible(False)
+                window.check_overdue_notifications(force=True)
+            else:
+                window.set_visible(True)
+                window.present()
+        return 0
 
 
 def main() -> None:

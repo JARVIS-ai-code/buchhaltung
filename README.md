@@ -1,24 +1,24 @@
-# Buchhaltung (Linux Desktop)
+# Buchhaltung (Linux/Windows Desktop)
 
-Native Buchhaltungs-App fuer Linux mit Python, GTK4 und Libadwaita.
+Native Buchhaltungs-App mit Python, GTK4 und Libadwaita.
 
-## Starten
+## Starten (Entwicklung)
 
 ```bash
 python3 app.py
 ```
 
-Voraussetzungen:
+Voraussetzungen (Linux):
 - `python3`
 - `python3-gi`
-- GTK4 + Libadwaita (bei dir bereits vorhanden)
+- GTK4 + Libadwaita
 
 ## Funktionen
 
-- `Start`: Lohneingaenge und Einkuenfte aus Nebentaetigkeiten dokumentieren
-- `Einstellungen`: Grundeinstellungen (Waehrung, Monatsbudget) und Konten anlegen
-- `Konten`: Fokusansicht je Konto mit Dauerzahlungen, Kategorien-Karten und Donut-Chart
-- `Analyse`: Interaktive Donut-Charts, KPI-Karten und Monatsauswertung
+- `Start`: Lohneingänge und Einkünfte aus Nebentätigkeiten dokumentieren
+- `Einstellungen`: Grundeinstellungen (Währung, Monatsbudget) und Konten anlegen
+- `Konten`: Fokusansicht je Konto mit Dauerzahlungen
+- `Analyse`: Monatsauswertung, Kategorien und offene Beträge
 - Modernes `Bento Grid`-Layout mit Dark UI, Glass-Sidebar und Micro-Interactions
 
 ## Datenspeicherung
@@ -39,4 +39,4 @@ Die Daten werden lokal benutzerbezogen gespeichert:
 
 Siehe `packaging/README.md`:
 - Linux `.deb` Build-Skript
-- Windows `Setup.exe` Build-Skript (PyInstaller + Inno Setup)
+- Windows `Setup.exe` Build-Skript (PyInstaller + gvsbuild GTK Runtime + Inno Setup)

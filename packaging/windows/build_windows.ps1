@@ -7,6 +7,12 @@ $Version = $VersionJson.version
 Write-Host "Baue Windows-App Version $Version ..."
 
 Set-Location $Root
+python -m pip install --upgrade pip
+python -m pip install pyinstaller
+
+Write-Host "Hole GTK Runtime über gvsbuild ..."
+& "$Root\packaging\windows\setup_gvsbuild_runtime.ps1" -TargetRoot "C:\gtk"
+
 python -m PyInstaller `
   --noconfirm `
   --clean `
@@ -17,12 +23,7 @@ python -m PyInstaller `
   app.py
 
 Write-Host "Bündle GTK Runtime für Windows ..."
-$Bash = "C:\msys64\usr\bin\bash.exe"
-if (Test-Path $Bash) {
-  & $Bash "$Root\packaging\windows\prepare_msys2_runtime.sh"
-} else {
-  Write-Warning "MSYS2 bash nicht gefunden. Runtime-Bündelung wurde übersprungen."
-}
+& "$Root\packaging\windows\prepare_gvsbuild_runtime.ps1" -Prefix "C:\gtk"
 
 Write-Host "Erzeuge Installer (Inno Setup) ..."
 $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"

@@ -30,9 +30,11 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\packaging\windows\build_windows.ps1
 ```
 
+Das Script lädt automatisch die aktuelle GTK4-Runtime aus `wingtk/gvsbuild`,
+installiert die passenden `PyGObject`/`pycairo` Wheels und baut danach den Installer.
+
 Voraussetzungen:
 - Python
-- `pyinstaller`
 - Inno Setup 6
 
 Ergebnis:
