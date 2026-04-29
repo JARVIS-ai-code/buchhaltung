@@ -3,20 +3,26 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$headers = @{ "User-Agent" = "jarvis-buchhaltung-ci" }
 
-$downloadUrl = "https://github.com/wingtk/gvsbuild/releases/latest/download/GTK4_Gvsbuild_latest_x64.zip"
+Write-Host "Lade aktuelle GTK4-Runtime (gvsbuild) ..."
+$release = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/wingtk/gvsbuild/releases/latest"
+$asset = $release.assets | Where-Object { $_.name -match '^GTK4_Gvsbuild_.*_x64\.zip$' } | Select-Object -First 1
+if (-not $asset) {
+  throw "Kein passendes GTK4_Gvsbuild_*_x64.zip Asset in latest release gefunden."
+}
+
 $tempDir = Join-Path $env:TEMP "gvsbuild-gtk4-runtime"
-$zipPath = Join-Path $tempDir "GTK4_Gvsbuild_latest_x64.zip"
+$zipPath = Join-Path $tempDir $asset.name
 $extractDir = Join-Path $tempDir "extract"
-
-Write-Host "Lade aktuelle GTK4-Runtime (gvsbuild): $downloadUrl"
 
 if (Test-Path $tempDir) {
   Remove-Item $tempDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 
-Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
+Write-Host "Download: $($asset.browser_download_url)"
+Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $zipPath
 Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
 $runtimeRoot = Get-ChildItem -Path $extractDir -Recurse -Directory |
@@ -62,9 +68,7 @@ if ($pygObjectWheel -and $pyCairoWheel) {
   python -m pip install --force-reinstall "$($pygObjectWheel.FullName)"
   python -m pip install --force-reinstall "$($pyCairoWheel.FullName)"
 } else {
-  Write-Warning "PyGObject/pycairo Wheels im Runtime-ZIP nicht gefunden. Versuche pip fallback."
-  python -m pip install --upgrade pip
-  python -m pip install pycairo PyGObject
+  throw "PyGObject/pycairo Wheels im Runtime-ZIP nicht gefunden."
 }
 
 Write-Host "gvsbuild Runtime ist bereit: $TargetRoot"
