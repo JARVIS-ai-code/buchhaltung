@@ -3214,6 +3214,11 @@ class FinanceAppWindow(MainWindowBase):
         GLib.timeout_add(16, tick)
 
     def animate_float_in(self, widget: Gtk.Widget, delay_ms: int = 0) -> None:
+        # Windows: avoid hidden UI when timer-based reveal is delayed or skipped.
+        if IS_WINDOWS:
+            widget.set_opacity(1.0)
+            return
+
         widget.set_opacity(0.0)
         base_margin = widget.get_margin_top()
         widget.set_margin_top(base_margin + 24)
