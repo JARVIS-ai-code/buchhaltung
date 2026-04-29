@@ -2788,11 +2788,13 @@ class FinanceAppWindow(Adw.ApplicationWindow):
             sep.add_css_class("subtitle")
             left.append(sep)
 
-            title = Gtk.Label(label=str(recurring.get("description", "-")))
+            recurring_day = self._safe_recurring_day(recurring)
+            title_text = f"{str(recurring.get('description', '-'))} | Abbuchung am {recurring_day:02d}."
+            title = Gtk.Label(label=title_text)
             title.set_xalign(0)
             title.set_hexpand(True)
             title.set_ellipsize(Pango.EllipsizeMode.END)
-            title.set_tooltip_text(f"monatlich am {self._safe_recurring_day(recurring):02d}.")
+            title.set_tooltip_text(title_text)
             left.append(title)
             card.append(left)
 
@@ -3715,26 +3717,44 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         result = {"ok": False, "error": "", "opened": False}
         path = Path(update_path)
         try:
-            cmd: list[str] | None = None
-            if shutil.which("pkexec"):
-                cmd = ["pkexec", "dpkg", "-i", str(path)]
-            elif hasattr(os, "geteuid") and os.geteuid() == 0:
-                cmd = ["dpkg", "-i", str(path)]
+            install_commands: list[list[str]] = []
+            if hasattr(os, "geteuid") and os.geteuid() == 0:
+                if shutil.which("apt"):
+                    install_commands.append(["apt", "install", "-y", str(path)])
+                if shutil.which("apt-get"):
+                    install_commands.append(["apt-get", "install", "-y", str(path)])
+                install_commands.append(["dpkg", "-i", str(path)])
+            elif shutil.which("pkexec"):
+                if shutil.which("apt"):
+                    install_commands.append(["pkexec", "apt", "install", "-y", str(path)])
+                if shutil.which("apt-get"):
+                    install_commands.append(["pkexec", "apt-get", "install", "-y", str(path)])
+                install_commands.append(["pkexec", "dpkg", "-i", str(path)])
 
-            if cmd is not None:
+            error_messages: list[str] = []
+            for cmd in install_commands:
                 proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if proc.returncode == 0:
                     result["ok"] = True
+                    break
+                err = (proc.stderr or proc.stdout or "").strip()
+                if not err:
+                    err = f"{' '.join(cmd)} Fehlercode {proc.returncode}"
+                error_messages.append(err[-240:])
+
+            if not result["ok"]:
+                # Fallback: open in Linux app center/package manager.
+                if shutil.which("xdg-open"):
+                    subprocess.Popen(["xdg-open", str(path)])
+                    result["opened"] = True
+                elif shutil.which("gio"):
+                    subprocess.Popen(["gio", "open", str(path)])
+                    result["opened"] = True
                 else:
-                    err = (proc.stderr or proc.stdout or "").strip()
-                    if not err:
-                        err = f"dpkg Fehlercode {proc.returncode}"
-                    result["error"] = err[-500:]
-            elif shutil.which("xdg-open"):
-                subprocess.Popen(["xdg-open", str(path)])
-                result["opened"] = True
-            else:
-                result["error"] = "Weder pkexec noch xdg-open verfügbar."
+                    if error_messages:
+                        result["error"] = " | ".join(error_messages)[-500:]
+                    else:
+                        result["error"] = "Weder Install-Kommando noch App-Center-Öffnung verfügbar."
         except OSError as exc:
             result["error"] = str(exc)
 
