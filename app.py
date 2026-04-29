@@ -457,6 +457,11 @@ class FinanceAppWindow(MainWindowBase):
 
         self._setup_css()
         self._build_ui()
+        append_runtime_log(
+            "ui-built "
+            f"accounts={len(self.data.get('accounts', []))} "
+            f"stack_child={self.stack.get_visible_child_name() if hasattr(self, 'stack') else '-'}"
+        )
         self.ensure_autostart_configuration()
         self.apply_monthly_recurring_if_needed()
         self.refresh_all()
@@ -972,7 +977,76 @@ class FinanceAppWindow(MainWindowBase):
     # UI base
     # -----------------------------
     def _setup_css(self) -> None:
-        css = f"""
+        if IS_WINDOWS:
+            # Windows-safe fallback style: no advanced effects, high contrast, predictable rendering.
+            css = f"""
+            window {{
+              background: #1b1b1f;
+              color: #f2f2f6;
+            }}
+
+            .app-root {{
+              padding: 14px;
+            }}
+
+            .glass-sidebar {{
+              background-color: #23232a;
+              border: 1px solid #3a3a45;
+              border-radius: 14px;
+              padding: 12px;
+            }}
+
+            .main-surface {{
+              background-color: #1f1f26;
+              border: 1px solid #343440;
+              border-radius: 14px;
+              padding: 12px;
+            }}
+
+            .nav-button, .account-focus-button {{
+              border-radius: 10px;
+              padding: 8px 10px;
+            }}
+
+            .nav-button.active, .account-focus-button.active {{
+              background: #5e43b7;
+              color: #ffffff;
+            }}
+
+            .bento-card {{
+              background-color: #292934;
+              border: 1px solid #3c3c48;
+              border-radius: 14px;
+              padding: 12px;
+            }}
+
+            entry, combobox, dropdown, spinbutton {{
+              min-height: 34px;
+              background: #2f2f3b;
+              color: #f7f7ff;
+              border: 1px solid #505064;
+              border-radius: 10px;
+            }}
+
+            button.solid {{
+              min-height: 36px;
+              border-radius: 10px;
+              background: #7a56ea;
+              color: #ffffff;
+              font-weight: 700;
+            }}
+
+            .danger {{
+              background: #71303a;
+              color: #ffd8df;
+            }}
+
+            .subtitle, .muted {{
+              color: #c6c6d8;
+            }}
+            """
+        else:
+            css = f"""
         * {{
           font-family: Inter, \"Geist Sans\", \"Cantarell\", sans-serif;
         }}
@@ -1226,7 +1300,8 @@ class FinanceAppWindow(MainWindowBase):
         main_surface.set_vexpand(True)
         root.append(main_surface)
 
-        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        transition = Gtk.StackTransitionType.NONE if IS_WINDOWS else Gtk.StackTransitionType.CROSSFADE
+        self.stack = Gtk.Stack(transition_type=transition)
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
         self.stack.set_hhomogeneous(False)
@@ -1235,7 +1310,7 @@ class FinanceAppWindow(MainWindowBase):
         self.page_scroller = Gtk.ScrolledWindow()
         self.page_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.page_scroller.set_kinetic_scrolling(True)
-        self.page_scroller.set_overlay_scrolling(True)
+        self.page_scroller.set_overlay_scrolling(not IS_WINDOWS)
         self.page_scroller.set_propagate_natural_height(False)
         self.page_scroller.set_propagate_natural_width(False)
         self.page_scroller.set_vexpand(True)
@@ -1253,6 +1328,7 @@ class FinanceAppWindow(MainWindowBase):
         self.stack.add_named(self.analysis_page, "analysis")
         self.stack.add_named(self.settings_page, "settings")
 
+        self.stack.set_visible_child(self.start_page)
         self.switch_page("start")
         self.add_tick_callback(self._sync_accounts_layout_tick)
 
@@ -3161,6 +3237,8 @@ class FinanceAppWindow(MainWindowBase):
 
     def animate_page_widgets(self, page_name: str) -> None:
         if self.is_closing:
+            return
+        if IS_WINDOWS:
             return
         widgets: list[Gtk.Widget] = []
         if page_name == "start":
