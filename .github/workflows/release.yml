@@ -41,11 +41,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Read version
         shell: powershell
         run: |
@@ -56,17 +51,35 @@ jobs:
         shell: powershell
         run: choco install innosetup --no-progress -y
 
-      - name: Install build tools
-        shell: powershell
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-gobject
+            mingw-w64-ucrt-x86_64-python-cairo
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+            mingw-w64-ucrt-x86_64-pyinstaller
+
+      - name: Build Windows app with PyInstaller (MSYS2)
+        shell: msys2 {0}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller
+          set -euo pipefail
+          /ucrt64/bin/python -V
+          /ucrt64/bin/pyinstaller --noconfirm --clean --windowed --name JarvisBuchhaltung --icon assets/icons/jarvis-buchhaltung.ico --add-data 'version.json;.' app.py
+          bash packaging/windows/prepare_msys2_runtime.sh
 
       - name: Build Windows setup exe
         shell: powershell
         run: |
-          Set-ExecutionPolicy -Scope Process Bypass
-          powershell -ExecutionPolicy Bypass -File .\packaging\windows\build_windows.ps1
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            throw "ISCC.exe wurde nicht gefunden."
+          }
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" "packaging\windows\jarvis-buchhaltung.iss"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

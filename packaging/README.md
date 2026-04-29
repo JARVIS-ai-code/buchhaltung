@@ -30,12 +30,12 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\packaging\windows\build_windows.ps1
 ```
 
-Das Script lädt automatisch die aktuelle GTK4-Runtime aus `wingtk/gvsbuild`,
-installiert die passenden `PyGObject`/`pycairo` Wheels und baut danach den Installer.
-
 Voraussetzungen:
-- Python
+- MSYS2 unter `C:\msys64`
 - Inno Setup 6
+
+Der Build nutzt `MSYS2 UCRT64` für Python/GTK/PyGObject und bündelt die Runtime
+in `dist/JarvisBuchhaltung/runtime`.
 
 Ergebnis:
 - `dist/windows/jarvis-buchhaltung-<version>-setup.exe`

@@ -39,4 +39,4 @@ Die Daten werden lokal benutzerbezogen gespeichert:
 
 Siehe `packaging/README.md`:
 - Linux `.deb` Build-Skript
-- Windows `Setup.exe` Build-Skript (PyInstaller + gvsbuild GTK Runtime + Inno Setup)
+- Windows `Setup.exe` Build-Skript (PyInstaller + MSYS2 GTK Runtime + Inno Setup)
