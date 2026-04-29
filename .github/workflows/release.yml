@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           python -V
-          pyinstaller --noconfirm --clean --windowed --name JarvisBuchhaltung --add-data "version.json;." app.py
+          pyinstaller --noconfirm --clean --windowed --name JarvisBuchhaltung --icon "assets/icons/jarvis-buchhaltung.ico" --add-data "version.json;." app.py
 
       - name: Build Windows setup exe
         shell: powershell

@@ -12,6 +12,7 @@ python -m PyInstaller `
   --clean `
   --windowed `
   --name JarvisBuchhaltung `
+  --icon "assets/icons/jarvis-buchhaltung.ico" `
   --add-data "version.json;." `
   app.py
 

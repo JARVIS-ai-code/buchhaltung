@@ -18,6 +18,7 @@ OutputBaseFilename=jarvis-buchhaltung-{#MyAppVersion}-setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\..\assets\icons\jarvis-buchhaltung.ico
 
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"

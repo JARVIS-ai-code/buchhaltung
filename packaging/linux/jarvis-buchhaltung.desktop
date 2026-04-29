@@ -4,4 +4,5 @@ Name=Jarvis Buchhaltung
 Comment=Private Buchhaltung mit Konten, Dauerzahlungen und Analysen
 Exec=jarvis-buchhaltung
 Terminal=false
+Icon=jarvis-buchhaltung
 Categories=Office;Finance;

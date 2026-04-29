@@ -12,6 +12,8 @@ mkdir -p "$PKG_DIR/DEBIAN"
 mkdir -p "$PKG_DIR/opt/jarvis-buchhaltung"
 mkdir -p "$PKG_DIR/usr/bin"
 mkdir -p "$PKG_DIR/usr/share/applications"
+mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$PKG_DIR/usr/share/icons/hicolor/scalable/apps"
 
 cat > "$PKG_DIR/DEBIAN/control" <<EOF
 Package: $PKG_NAME
@@ -27,6 +29,8 @@ EOF
 
 cp "$ROOT_DIR/app.py" "$PKG_DIR/opt/jarvis-buchhaltung/app.py"
 cp "$ROOT_DIR/version.json" "$PKG_DIR/opt/jarvis-buchhaltung/version.json"
+cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/jarvis-buchhaltung.png"
+cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/apps/jarvis-buchhaltung.svg"
 
 cat > "$PKG_DIR/usr/bin/jarvis-buchhaltung" <<'EOF'
 #!/usr/bin/env bash

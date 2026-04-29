@@ -26,6 +26,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 APP_NAME = "JarvisBuchhaltung"
 PROJECT_DIR = Path(__file__).parent
+APP_ICON_NAME = "jarvis-buchhaltung"
 LEGACY_DATA_PATH = PROJECT_DIR / "data.json"
 LEGACY_DB_PATH = PROJECT_DIR / "buchhaltung.db"
 VERSION_FILE_PATH = PROJECT_DIR / "version.json"
@@ -287,6 +288,7 @@ class FinanceAppWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, launched_from_autostart: bool = False) -> None:
         super().__init__(application=app)
         self.set_title("Buchhaltung - Bento UI")
+        self.set_icon_name(APP_ICON_NAME)
         self.set_default_size(1280, 820)
         self.set_resizable(True)
         self.set_decorated(True)
@@ -3938,6 +3940,7 @@ class FinanceApp(Adw.Application):
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
+        Gtk.Window.set_default_icon_name(APP_ICON_NAME)
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", self._on_quit_action)
         self.add_action(quit_action)
