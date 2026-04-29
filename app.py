@@ -46,18 +46,27 @@ def _configure_windows_gtk_runtime() -> None:
     if not roots:
         return
 
+    runtime_root: Path | None = None
     dll_dirs: list[Path] = []
     typelib_dirs: list[Path] = []
     share_dirs: list[Path] = []
     schema_dirs: list[Path] = []
+    pixbuf_dirs: list[Path] = []
+    pixbuf_cache_files: list[Path] = []
+    gtk_module_dirs: list[Path] = []
 
     for root in roots:
         bin_dir = root / "bin"
         typelibs = root / "lib" / "girepository-1.0"
         share_dir = root / "share"
         schemas = share_dir / "glib-2.0" / "schemas"
+        pixbuf_dir = root / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders"
+        pixbuf_cache = root / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders.cache"
+        gtk_mod_dir = root / "lib" / "gtk-4.0"
 
         if bin_dir.exists():
+            if runtime_root is None:
+                runtime_root = root
             dll_dirs.append(bin_dir)
         if typelibs.exists():
             typelib_dirs.append(typelibs)
@@ -65,6 +74,12 @@ def _configure_windows_gtk_runtime() -> None:
             share_dirs.append(share_dir)
         if schemas.exists():
             schema_dirs.append(schemas)
+        if pixbuf_dir.exists():
+            pixbuf_dirs.append(pixbuf_dir)
+        if pixbuf_cache.exists():
+            pixbuf_cache_files.append(pixbuf_cache)
+        if gtk_mod_dir.exists():
+            gtk_module_dirs.append(gtk_mod_dir)
 
     for dll_dir in dll_dirs:
         try:
@@ -86,6 +101,32 @@ def _configure_windows_gtk_runtime() -> None:
     if schema_dirs and not os.environ.get("GSETTINGS_SCHEMA_DIR"):
         os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dirs[0])
 
+    if gtk_module_dirs and not os.environ.get("GTK_PATH"):
+        os.environ["GTK_PATH"] = str(gtk_module_dirs[0])
+
+    if pixbuf_dirs:
+        os.environ["GDK_PIXBUF_MODULEDIR"] = str(pixbuf_dirs[0])
+
+    if pixbuf_cache_files:
+        os.environ["GDK_PIXBUF_MODULE_FILE"] = str(pixbuf_cache_files[0])
+    elif runtime_root is not None:
+        query_loaders = runtime_root / "bin" / "gdk-pixbuf-query-loaders.exe"
+        loaders_cache = runtime_root / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders.cache"
+        if query_loaders.exists():
+            try:
+                loaders_cache.parent.mkdir(parents=True, exist_ok=True)
+                proc = subprocess.run(
+                    [str(query_loaders)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if proc.returncode == 0 and proc.stdout.strip():
+                    loaders_cache.write_text(proc.stdout, encoding="utf-8")
+                    os.environ["GDK_PIXBUF_MODULE_FILE"] = str(loaders_cache)
+            except OSError:
+                pass
+
 
 _configure_windows_gtk_runtime()
 
@@ -97,6 +138,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 
 APP_NAME = "JarvisBuchhaltung"
+IS_WINDOWS = os.name == "nt"
 PROJECT_DIR = Path(__file__).parent
 APP_ICON_NAME = "jarvis-buchhaltung"
 LEGACY_DATA_PATH = PROJECT_DIR / "data.json"
@@ -367,7 +409,10 @@ class DonutChart(Gtk.Box):
         self.progress_bar.set_fraction(max(0.0, min(self.target_fraction * self.progress, 1.0)))
 
 
-class FinanceAppWindow(Adw.ApplicationWindow):
+MainWindowBase = Gtk.ApplicationWindow if IS_WINDOWS else Adw.ApplicationWindow
+
+
+class FinanceAppWindow(MainWindowBase):
     def __init__(self, app: Adw.Application, launched_from_autostart: bool = False) -> None:
         super().__init__(application=app)
         self.set_title("JARVIS Buchhaltungssystem")
@@ -1151,16 +1196,26 @@ class FinanceAppWindow(Adw.ApplicationWindow):
         )
 
     def _build_ui(self) -> None:
-        toolbar_view = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        header.set_show_start_title_buttons(True)
-        header.set_show_end_title_buttons(True)
-        toolbar_view.add_top_bar(header)
-
         root = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         root.add_css_class("app-root")
-        toolbar_view.set_content(root)
-        self.set_content(toolbar_view)
+
+        if IS_WINDOWS:
+            header = Gtk.HeaderBar()
+            header.set_show_title_buttons(True)
+            header.set_decoration_layout("minimize,maximize,close")
+            title_label = Gtk.Label(label="JARVIS Buchhaltungssystem")
+            title_label.add_css_class("title-sm")
+            header.set_title_widget(title_label)
+            self.set_titlebar(header)
+            self.set_child(root)
+        else:
+            toolbar_view = Adw.ToolbarView()
+            header = Adw.HeaderBar()
+            header.set_show_start_title_buttons(True)
+            header.set_show_end_title_buttons(True)
+            toolbar_view.add_top_bar(header)
+            toolbar_view.set_content(root)
+            self.set_content(toolbar_view)
 
         sidebar = self._build_sidebar()
         root.append(sidebar)
