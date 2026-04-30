@@ -557,7 +557,10 @@ function renderSettings() {
             <button class="ghost" type="button" data-action="check-update">Jetzt auf Updates prüfen</button>
           </div>
         </form>
-        <p class="muted">Aktuelle Version: ${escapeHtml(d.version)} | DB: ${escapeHtml(d.db_path)}</p>
+        <div class="actions">
+          <button class="ghost" type="button" data-action="open-db-folder">DB-Ordner öffnen</button>
+        </div>
+        <p class="muted">Aktuelle Version: ${escapeHtml(d.version)}</p>
       `, 7)}
       ${card("Monatssteuerung", "Anzeigemonat und geschlossene Monate", `
         <form id="month-form" class="form-grid single">
@@ -811,6 +814,9 @@ document.addEventListener("click", async (event) => {
       } else if (confirm(`Update ${payload.update.latest} installieren?`)) {
         await startUpdateInstall(payload.update.asset);
       }
+    } else if (action === "open-db-folder") {
+      await api("/api/db/open-folder", { method: "POST", body: {} });
+      showToast("DB-Ordner wurde geöffnet.");
     }
   } catch (error) {
     showToast(error.message);

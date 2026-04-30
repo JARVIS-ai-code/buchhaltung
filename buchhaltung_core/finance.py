@@ -1637,3 +1637,29 @@ class FinanceService:
         except OSError:
             return False
         return False
+
+    def open_db_folder(self) -> bool:
+        folder = self.db_path.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            try:
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+                return True
+            except OSError as exc:
+                raise FinanceError(f"DB-Ordner konnte nicht geöffnet werden: {exc}") from None
+
+        opener_commands = [
+            ["xdg-open", str(folder)],
+            ["gio", "open", str(folder)],
+            ["kioclient5", "exec", str(folder)],
+            ["kioclient", "exec", str(folder)],
+        ]
+        for command in opener_commands:
+            if not shutil.which(command[0]):
+                continue
+            try:
+                subprocess.Popen(command)
+                return True
+            except OSError:
+                continue
+        raise FinanceError("DB-Ordner konnte nicht geöffnet werden (kein System-Öffner gefunden).")

@@ -222,6 +222,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/update/progress":
             task_id = str(query.get("task_id", "")).strip()
             return {"update": {"task": service.get_update_task(task_id)}}
+        if method == "POST" and path == "/api/db/open-folder":
+            return {"db": {"opened": service.open_db_folder()}}
         if method == "POST" and path == "/api/app/restart":
             schedule_process_exit(code=77)
             return {"restart": True}
