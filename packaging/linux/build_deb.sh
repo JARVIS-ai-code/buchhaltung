@@ -22,7 +22,7 @@ Version: $VERSION
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3
+Depends: python3, libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0, libgbm1, libdrm2, libxkbcommon0, libasound2 | libasound2t64
 Maintainer: JARVIS-ai-code
 Description: Desktop-Buchhaltung mit Electron und Python/SQLite
  Buchhaltungs-App mit Electron-Oberflaeche und lokalem Python/SQLite-Core.
@@ -58,6 +58,13 @@ cp "$ROOT_DIR/packaging/linux/jarvis-buchhaltung.desktop" "$PKG_DIR/usr/share/ap
 cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF2'
 #!/usr/bin/env bash
 set -e
+
+chrome_sandbox="/opt/jarvis-buchhaltung/node_modules/electron/dist/chrome-sandbox"
+if [ -f "$chrome_sandbox" ]; then
+  chown root:root "$chrome_sandbox" || true
+  chmod 4755 "$chrome_sandbox" || true
+fi
+
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 fi
