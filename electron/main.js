@@ -120,6 +120,11 @@ function startBackend() {
         if (!ready) {
           clearTimeout(startupTimer);
           reject(new Error(`Backend wurde beendet (Code ${code}) mit Startbefehl: ${launch.label}`));
+          return;
+        }
+        if (code === 77) {
+          app.relaunch();
+          app.exit(0);
         }
       });
     };

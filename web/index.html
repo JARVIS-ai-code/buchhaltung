@@ -49,6 +49,22 @@
         </div>
       </form>
     </dialog>
+    <dialog id="update-progress-modal" class="modal update-progress-modal">
+      <form method="dialog" class="update-progress-form">
+        <h2>Update läuft</h2>
+        <div id="update-progress-status" class="subtitle">Warte auf Start…</div>
+        <progress id="update-progress-bar" value="0" max="100"></progress>
+        <div class="update-progress-meta">
+          <span id="update-progress-percent">0 %</span>
+          <span id="update-progress-bytes">0 B / -</span>
+          <span id="update-progress-speed">0 B/s</span>
+        </div>
+        <div class="actions">
+          <button id="update-restart-button" class="solid" type="button" hidden>Programm neu starten</button>
+          <button id="update-progress-close" class="ghost" value="cancel" type="button">Im Hintergrund</button>
+        </div>
+      </form>
+    </dialog>
     <script src="app.js"></script>
   </body>
 </html>

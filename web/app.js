@@ -4,6 +4,9 @@ const state = {
   selectedAccountId: null,
   analysisFilterAccount: null,
   updateAsset: null,
+  updateTaskId: "",
+  updatePollTimer: null,
+  updateLastStatus: "",
   lastUpdateCheckAt: 0,
   announcedUpdateTag: "",
   lastReminderSignature: "",
@@ -44,6 +47,103 @@ function showToast(message) {
   state.toastTimer = setTimeout(() => {
     toast.hidden = true;
   }, 3600);
+}
+
+function formatBytes(value) {
+  const bytes = Math.max(0, Number(value || 0));
+  if (bytes < 1024) return `${bytes.toFixed(0)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatSpeed(value) {
+  const speed = Math.max(0, Number(value || 0));
+  return `${formatBytes(speed)}/s`;
+}
+
+function updatePhaseLabel(task) {
+  const phase = String(task?.phase || "");
+  if (phase === "queued") return "Update wird vorbereitet…";
+  if (phase === "download") return "Download läuft…";
+  if (phase === "install") return "Installation wird gestartet…";
+  if (phase === "completed") return "Update abgeschlossen.";
+  if (phase === "failed") return "Update fehlgeschlagen.";
+  return "Update läuft…";
+}
+
+function setUpdateProgressModal(task) {
+  const status = $("#update-progress-status");
+  const progress = $("#update-progress-bar");
+  const percent = $("#update-progress-percent");
+  const bytes = $("#update-progress-bytes");
+  const speed = $("#update-progress-speed");
+  const restartButton = $("#update-restart-button");
+
+  const downloaded = Math.max(0, Number(task?.downloaded_bytes || 0));
+  const total = Math.max(0, Number(task?.total_bytes || 0));
+  const computedPercent = total > 0 ? Math.min(100, (downloaded * 100) / total) : 0;
+
+  status.textContent = task?.error || task?.message || updatePhaseLabel(task);
+  if (total > 0) {
+    progress.max = total;
+    progress.value = downloaded;
+    percent.textContent = `${computedPercent.toFixed(1)} %`;
+    bytes.textContent = `${formatBytes(downloaded)} / ${formatBytes(total)}`;
+  } else {
+    progress.max = 1;
+    progress.removeAttribute("value");
+    percent.textContent = "—";
+    bytes.textContent = `${formatBytes(downloaded)} / unbekannt`;
+  }
+  speed.textContent = formatSpeed(task?.speed_bps || 0);
+  restartButton.hidden = !Boolean(task?.restart_required && task?.status === "completed");
+}
+
+function stopUpdatePolling() {
+  if (state.updatePollTimer) {
+    clearInterval(state.updatePollTimer);
+    state.updatePollTimer = null;
+  }
+}
+
+async function pollUpdateProgress() {
+  if (!state.updateTaskId) return;
+  const payload = await api(`/api/update/progress?task_id=${encodeURIComponent(state.updateTaskId)}`);
+  const task = payload.update?.task || {};
+  setUpdateProgressModal(task);
+
+  if (task.status === "running") return;
+  stopUpdatePolling();
+
+  if (task.status === "completed") {
+    if (task.restart_required) {
+      showToast("Update fertig. Bitte Programm neu starten.");
+    } else {
+      showToast("Update gestartet.");
+    }
+  } else if (task.status === "failed") {
+    showToast(task.error || "Update fehlgeschlagen.");
+  }
+}
+
+async function startUpdateInstall(asset) {
+  const payload = await api("/api/update/install", { method: "POST", body: { asset } });
+  const task = payload.update?.task;
+  if (!task?.id) throw new Error("Update-Task konnte nicht gestartet werden.");
+  state.updateTaskId = task.id;
+  state.updateLastStatus = "";
+  const modal = $("#update-progress-modal");
+  if (modal && !modal.open) modal.showModal();
+  setUpdateProgressModal(task);
+  stopUpdatePolling();
+  await pollUpdateProgress();
+  state.updatePollTimer = setInterval(() => {
+    pollUpdateProgress().catch((error) => {
+      stopUpdatePolling();
+      showToast(error.message || "Update-Status konnte nicht gelesen werden.");
+    });
+  }, 800);
 }
 
 async function api(path, options = {}) {
@@ -709,8 +809,7 @@ document.addEventListener("click", async (event) => {
         const hint = names.length ? ` Verfügbar: ${names.join(", ")}` : "";
         showToast(`Update gefunden, aber kein passendes Paket für dieses System.${hint}`);
       } else if (confirm(`Update ${payload.update.latest} installieren?`)) {
-        await api("/api/update/install", { method: "POST", body: { asset: payload.update.asset } });
-        showToast("Update installiert oder gestartet.");
+        await startUpdateInstall(payload.update.asset);
       }
     }
   } catch (error) {
@@ -760,8 +859,7 @@ async function periodicTick() {
     if (!update?.is_newer || !update.asset || state.announcedUpdateTag === update.latest) return;
     state.announcedUpdateTag = update.latest;
     if (confirm(`Update ${update.latest} installieren?`)) {
-      await api("/api/update/install", { method: "POST", body: { asset: update.asset } });
-      showToast("Update installiert oder gestartet.");
+      await startUpdateInstall(update.asset);
     }
   } catch (error) {
     console.warn(error);
@@ -779,6 +877,26 @@ if (reminderOpenAccountsBtn) {
     const modal = $("#reminder-modal");
     if (modal?.open) {
       modal.close();
+    }
+  });
+}
+
+const updateProgressCloseBtn = $("#update-progress-close");
+if (updateProgressCloseBtn) {
+  updateProgressCloseBtn.addEventListener("click", () => {
+    const modal = $("#update-progress-modal");
+    if (modal?.open) modal.close();
+  });
+}
+
+const updateRestartBtn = $("#update-restart-button");
+if (updateRestartBtn) {
+  updateRestartBtn.addEventListener("click", async () => {
+    try {
+      await api("/api/app/restart", { method: "POST", body: {} });
+      showToast("Programm wird neu gestartet…");
+    } catch (error) {
+      showToast(error.message);
     }
   });
 }

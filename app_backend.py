@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,14 @@ WEB_DIR = resolve_web_dir()
 
 def json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def schedule_process_exit(code: int = 77, delay_seconds: float = 0.25) -> None:
+    def worker() -> None:
+        time.sleep(max(0.0, float(delay_seconds)))
+        os._exit(int(code))
+
+    threading.Thread(target=worker, daemon=True, name="app-exit-scheduler").start()
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -209,7 +218,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             asset = payload.get("asset")
             if not isinstance(asset, dict):
                 raise FinanceError("Kein Update-Paket ausgewählt.")
-            return {"update": service.download_and_launch_update(asset)}
+            return {"update": {"task": service.start_update_install(asset)}}
+        if method == "GET" and path == "/api/update/progress":
+            task_id = str(query.get("task_id", "")).strip()
+            return {"update": {"task": service.get_update_task(task_id)}}
+        if method == "POST" and path == "/api/app/restart":
+            schedule_process_exit(code=77)
+            return {"restart": True}
 
         raise FinanceError("Unbekannter API-Endpunkt.")
 

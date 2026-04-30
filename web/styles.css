@@ -596,6 +596,43 @@ input:focus {
   padding-right: 4px;
 }
 
+.update-progress-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.update-progress-form {
+  display: grid;
+  gap: 12px;
+}
+
+#update-progress-bar {
+  width: 100%;
+  height: 14px;
+}
+
+#update-progress-bar::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+#update-progress-bar::-webkit-progress-value {
+  background: linear-gradient(120deg, var(--violet), var(--mint));
+  border-radius: 999px;
+}
+
+#update-progress-bar::-moz-progress-bar {
+  background: linear-gradient(120deg, var(--violet), var(--mint));
+  border-radius: 999px;
+}
+
+.update-progress-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;

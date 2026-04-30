@@ -8,6 +8,8 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -344,6 +346,9 @@ def is_newer_version(latest: str, current: str) -> bool:
 class FinanceService:
     def __init__(self, db_path: Path = DB_PATH) -> None:
         self.db_path = db_path
+        self._update_jobs: dict[str, dict[str, Any]] = {}
+        self._update_jobs_lock = threading.Lock()
+        self._latest_update_job_id: str = ""
         self.ensure_data_layout()
         self.initialize_db()
         if self.db_is_empty():
@@ -1422,7 +1427,121 @@ class FinanceService:
                     return asset
         return None
 
-    def download_and_launch_update(self, asset: dict[str, Any]) -> dict[str, Any]:
+    def _cleanup_update_jobs_locked(self) -> None:
+        finished = [item for item in self._update_jobs.values() if item.get("status") in ("completed", "failed")]
+        if len(finished) <= 20:
+            return
+        finished.sort(key=lambda item: str(item.get("finished_at", "")))
+        remove_count = len(finished) - 20
+        for item in finished[:remove_count]:
+            task_id = str(item.get("id", ""))
+            if task_id:
+                self._update_jobs.pop(task_id, None)
+
+    def _create_update_task(self, asset: dict[str, Any]) -> dict[str, Any]:
+        task_id = uuid.uuid4().hex
+        task = {
+            "id": task_id,
+            "asset_name": str(asset.get("name", "")).strip(),
+            "status": "running",
+            "phase": "queued",
+            "message": "Update wird vorbereitet.",
+            "downloaded_bytes": 0,
+            "total_bytes": 0,
+            "progress_percent": 0.0,
+            "speed_bps": 0.0,
+            "path": "",
+            "launched": False,
+            "restart_required": False,
+            "error": "",
+            "started_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "finished_at": "",
+        }
+        with self._update_jobs_lock:
+            self._cleanup_update_jobs_locked()
+            self._update_jobs[task_id] = task
+            self._latest_update_job_id = task_id
+        return deepcopy(task)
+
+    def _update_task(self, task_id: str, **changes: Any) -> None:
+        with self._update_jobs_lock:
+            task = self._update_jobs.get(task_id)
+            if not task:
+                return
+            task.update(changes)
+
+    def get_update_task(self, task_id: str = "") -> dict[str, Any]:
+        with self._update_jobs_lock:
+            resolved = task_id.strip() or self._latest_update_job_id
+            if not resolved or resolved not in self._update_jobs:
+                raise FinanceError("Kein laufendes Update gefunden.")
+            return deepcopy(self._update_jobs[resolved])
+
+    def start_update_install(self, asset: dict[str, Any]) -> dict[str, Any]:
+        url = str(asset.get("url", "")).strip()
+        if not url:
+            raise FinanceError("Kein Update-Paket ausgewählt.")
+        task = self._create_update_task(asset)
+        worker = threading.Thread(
+            target=self._run_update_task,
+            args=(task["id"], asset),
+            daemon=True,
+            name=f"update-task-{task['id'][:8]}",
+        )
+        worker.start()
+        return task
+
+    def _run_update_task(self, task_id: str, asset: dict[str, Any]) -> None:
+        started = time.monotonic()
+        last_downloaded = 0
+        try:
+            self._update_task(task_id, phase="download", message="Update wird heruntergeladen.")
+
+            def on_progress(downloaded: int, total: int) -> None:
+                nonlocal last_downloaded
+                last_downloaded = downloaded
+                elapsed = max(0.001, time.monotonic() - started)
+                speed = downloaded / elapsed
+                percent = (downloaded * 100.0 / total) if total > 0 else 0.0
+                self._update_task(
+                    task_id,
+                    downloaded_bytes=int(downloaded),
+                    total_bytes=int(total),
+                    progress_percent=float(min(100.0, max(0.0, percent))) if total > 0 else 0.0,
+                    speed_bps=float(speed),
+                )
+
+            target_path = self.download_update_file(asset, on_progress)
+            self._update_task(task_id, phase="install", message="Installer wird gestartet.", path=str(target_path))
+            launched = self.launch_update_installer(target_path)
+            if not launched:
+                raise FinanceError("Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
+
+            final_total = int(self.get_update_task(task_id).get("total_bytes", 0))
+            final_percent = 100.0 if final_total > 0 else 0.0
+            restart_required = os.name != "nt"
+            self._update_task(
+                task_id,
+                status="completed",
+                phase="completed",
+                message="Update installiert. Bitte Programm neu starten." if restart_required else "Installer wurde gestartet.",
+                launched=True,
+                restart_required=restart_required,
+                downloaded_bytes=last_downloaded,
+                progress_percent=final_percent,
+            )
+        except FinanceError as exc:
+            self._update_task(task_id, status="failed", phase="failed", message="Update fehlgeschlagen.", error=str(exc))
+        except Exception as exc:
+            self._update_task(task_id, status="failed", phase="failed", message="Update fehlgeschlagen.", error=str(exc))
+        finally:
+            self._update_task(task_id, finished_at=datetime.utcnow().isoformat(timespec="seconds") + "Z")
+
+    def download_update_file(
+        self,
+        asset: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> Path:
         url = str(asset.get("url", "")).strip()
         name = Path(str(asset.get("name", "")).strip()).name or "update.bin"
         if not url:
@@ -1433,14 +1552,31 @@ class FinanceService:
         try:
             request = urllib.request.Request(url, headers={"User-Agent": "jarvis-buchhaltung-updater"}, method="GET")
             with urllib.request.urlopen(request, timeout=30) as response:
+                total_raw = response.headers.get("Content-Length", "0").strip()
+                try:
+                    total = max(0, int(total_raw))
+                except ValueError:
+                    total = 0
+                downloaded = 0
+                if progress_callback:
+                    progress_callback(downloaded, total)
                 with open(target_path, "wb") as handle:
                     while True:
                         chunk = response.read(64 * 1024)
                         if not chunk:
                             break
                         handle.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback:
+                            progress_callback(downloaded, total)
+                if progress_callback:
+                    progress_callback(downloaded, total)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
             raise FinanceError(f"Update-Download fehlgeschlagen: {exc}") from None
+        return target_path
+
+    def download_and_launch_update(self, asset: dict[str, Any]) -> dict[str, Any]:
+        target_path = self.download_update_file(asset)
         launched = self.launch_update_installer(target_path)
         if not launched:
             raise FinanceError("Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
@@ -1466,12 +1602,8 @@ class FinanceService:
                     )
                     if result.returncode == 0:
                         return True
-                    stderr = (result.stderr or "").strip()
-                    if stderr:
-                        raise FinanceError(f"Update-Installation fehlgeschlagen: {stderr}")
-                    raise FinanceError(f"Update-Installation fehlgeschlagen (Code {result.returncode}).")
-                except OSError as exc:
-                    raise FinanceError(f"Update-Installation konnte nicht gestartet werden: {exc}") from None
+                except OSError:
+                    pass
             if shutil.which("pkexec"):
                 try:
                     result = subprocess.run(
@@ -1482,12 +1614,14 @@ class FinanceService:
                     )
                     if result.returncode == 0:
                         return True
-                    stderr = (result.stderr or "").strip()
-                    if stderr:
-                        raise FinanceError(f"Update-Installation fehlgeschlagen: {stderr}")
-                    raise FinanceError(f"Update-Installation fehlgeschlagen (Code {result.returncode}).")
-                except OSError as exc:
-                    raise FinanceError(f"Update-Installation konnte nicht gestartet werden: {exc}") from None
+                except OSError:
+                    pass
+            if shutil.which("xdg-open"):
+                try:
+                    subprocess.Popen(["xdg-open", str(update_path)])
+                    return True
+                except OSError:
+                    pass
             return False
         if name.endswith(".appimage"):
             try:
