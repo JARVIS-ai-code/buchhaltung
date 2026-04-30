@@ -1,6 +1,6 @@
 {
   "name": "jarvis-buchhaltung",
-  "version": "1.2.21",
+  "version": "1.2.22",
   "description": "JARVIS Buchhaltungssystem mit Electron-Oberfläche und Python/SQLite-Core",
   "main": "electron/main.js",
   "scripts": {
