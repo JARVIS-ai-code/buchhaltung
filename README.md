@@ -1,15 +1,20 @@
-# Buchhaltung (Linux/Windows Desktop)
+# Buchhaltung (Electron + Python/SQLite)
 
-Native Buchhaltungs-App mit separaten Oberflächen je Betriebssystem:
-- Linux: GTK/Libadwaita (`app_gtk.py`)
-- Windows: PySide6 (`app_qt.py`)
-- Einstiegspunkt: `app.py` (OS-Dispatcher)
+Desktop-App mit Electron-Oberfläche und Python-Core:
+- Oberfläche: Electron + HTML/CSS/JS (`electron/`, `web/`)
+- Verarbeitung und SQLite: Python (`buchhaltung_core/`, `app_backend.py`)
+- Datenbank bleibt lokal benutzerbezogen in SQLite.
+
+Die alten nativen GTK/PySide-Dateien liegen zur Referenz unter `alt/`.
 
 ## Entwicklung starten
 
 ```bash
-python3 app.py
+npm install
+npm start
 ```
+
+Alternativ startet `python3 app.py` dieselbe Electron-App, sobald `npm install` ausgeführt wurde.
 
 ## Datenspeicherung
 
@@ -25,3 +30,10 @@ Die Daten werden lokal benutzerbezogen in SQLite gespeichert:
 ## Installer bauen
 
 Siehe `packaging/README.md`.
+
+Schnellstart Windows-Installer (auf Windows ausführen):
+
+```powershell
+npm install
+npm run dist:win
+```

@@ -1,0 +1,74 @@
+{
+  "name": "jarvis-buchhaltung",
+  "version": "1.2.1",
+  "description": "JARVIS Buchhaltungssystem mit Electron-Oberfläche und Python/SQLite-Core",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node scripts/start-electron.js",
+    "backend": "python3 app_backend.py --port 8765",
+    "dev": "node scripts/start-electron.js --dev",
+    "sync:version": "node scripts/sync-version.js",
+    "build:backend:win": "node scripts/build-backend-win.js",
+    "dist:win": "npm run sync:version && npm run build:backend:win && electron-builder --win nsis portable --x64",
+    "dist:win:nsis": "npm run sync:version && npm run build:backend:win && electron-builder --win nsis --x64",
+    "dist:win:portable": "npm run sync:version && npm run build:backend:win && electron-builder --win portable --x64",
+    "dist:win:dir": "npm run sync:version && npm run build:backend:win && electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.jarvis.buchhaltung",
+    "productName": "JARVIS Buchhaltungssystem",
+    "asar": true,
+    "compression": "normal",
+    "directories": {
+      "output": "dist/electron"
+    },
+    "files": [
+      "electron/**/*",
+      "web/**/*",
+      "package.json",
+      "!alt/**/*",
+      "!dist/**/*",
+      "!packaging/**/*",
+      "!scripts/build-backend-win.js"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/backend/JarvisBuchhaltungBackend.exe",
+        "to": "backend/JarvisBuchhaltungBackend.exe"
+      },
+      {
+        "from": "version.json",
+        "to": "version.json"
+      },
+      {
+        "from": "web",
+        "to": "web"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icons/jarvis-buchhaltung.ico",
+      "artifactName": "jarvis-buchhaltung-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JARVIS Buchhaltungssystem",
+      "artifactName": "jarvis-buchhaltung-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "jarvis-buchhaltung-${version}-portable.${ext}"
+    }
+  }
+}

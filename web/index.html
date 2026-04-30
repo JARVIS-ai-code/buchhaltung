@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JARVIS Buchhaltungssystem</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-root">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">Finanz Cockpit</div>
+          <div class="brand-subtitle">Privatbuchhaltung</div>
+        </div>
+        <nav class="nav">
+          <button class="nav-button active" data-page="start" title="Start"><span>⌂</span><strong>Start</strong></button>
+          <button class="nav-button" data-page="accounts" title="Konten"><span>▦</span><strong>Konten</strong></button>
+          <button class="nav-button" data-page="analysis" title="Analyse"><span>◌</span><strong>Analyse</strong></button>
+          <button class="nav-button" data-page="settings" title="Einstellungen"><span>⚙</span><strong>Einstellungen</strong></button>
+        </nav>
+        <div class="sidebar-spacer"></div>
+        <div class="live-hint">
+          <div>Live-Hinweis</div>
+          <strong>Mint = positiver Cashflow</strong>
+        </div>
+      </aside>
+
+      <main class="main-surface">
+        <div id="toast" class="toast" hidden></div>
+        <section id="reminder" class="reminder" hidden></section>
+
+        <section id="page-start" class="page active"></section>
+        <section id="page-accounts" class="page"></section>
+        <section id="page-analysis" class="page"></section>
+        <section id="page-settings" class="page"></section>
+      </main>
+    </div>
+
+    <dialog id="modal" class="modal"></dialog>
+    <dialog id="reminder-modal" class="modal reminder-modal">
+      <form method="dialog" class="reminder-modal-form">
+        <h2>Offene Zahlungen sind überfällig</h2>
+        <div class="subtitle">Diese Einträge liegen in der Vergangenheit und sind noch nicht als erledigt markiert.</div>
+        <div id="reminder-modal-list" class="list" style="margin-top:12px"></div>
+        <div class="actions">
+          <button id="reminder-open-accounts" class="solid" type="button">Programm öffnen</button>
+          <button class="ghost" value="cancel" type="submit">Später erinnern</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="app.js"></script>
+  </body>
+</html>

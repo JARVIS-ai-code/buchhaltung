@@ -22,16 +22,26 @@ Version: $VERSION
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3, python3-pyside6.qtwidgets | python3-pyside6
+Depends: python3
 Maintainer: JARVIS-ai-code
-Description: Desktop-Buchhaltung fuer Linux/Windows
- Native Buchhaltungs-App mit separatem Linux/Windows UI.
+Description: Desktop-Buchhaltung mit Electron und Python/SQLite
+ Buchhaltungs-App mit Electron-Oberflaeche und lokalem Python/SQLite-Core.
 EOF2
 
+if [ ! -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
+  (cd "$ROOT_DIR" && npm install)
+fi
+
 cp "$ROOT_DIR/app.py" "$PKG_DIR/opt/jarvis-buchhaltung/app.py"
-cp "$ROOT_DIR/app_qt.py" "$PKG_DIR/opt/jarvis-buchhaltung/app_qt.py"
-cp "$ROOT_DIR/app_gtk.py" "$PKG_DIR/opt/jarvis-buchhaltung/app_gtk.py"
+cp "$ROOT_DIR/app_backend.py" "$PKG_DIR/opt/jarvis-buchhaltung/app_backend.py"
 cp "$ROOT_DIR/version.json" "$PKG_DIR/opt/jarvis-buchhaltung/version.json"
+cp "$ROOT_DIR/package.json" "$PKG_DIR/opt/jarvis-buchhaltung/package.json"
+cp "$ROOT_DIR/package-lock.json" "$PKG_DIR/opt/jarvis-buchhaltung/package-lock.json"
+cp -a "$ROOT_DIR/buchhaltung_core" "$PKG_DIR/opt/jarvis-buchhaltung/buchhaltung_core"
+cp -a "$ROOT_DIR/electron" "$PKG_DIR/opt/jarvis-buchhaltung/electron"
+cp -a "$ROOT_DIR/web" "$PKG_DIR/opt/jarvis-buchhaltung/web"
+cp -a "$ROOT_DIR/scripts" "$PKG_DIR/opt/jarvis-buchhaltung/scripts"
+cp -a "$ROOT_DIR/node_modules" "$PKG_DIR/opt/jarvis-buchhaltung/node_modules"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.png" "$PKG_DIR/opt/jarvis-buchhaltung/assets/icons/jarvis-buchhaltung.png"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.svg" "$PKG_DIR/opt/jarvis-buchhaltung/assets/icons/jarvis-buchhaltung.svg"
 cp "$ROOT_DIR/assets/icons/jarvis-buchhaltung.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/jarvis-buchhaltung.png"
