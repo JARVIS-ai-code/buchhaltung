@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import sqlite3
 import stat
@@ -1323,6 +1324,7 @@ class FinanceService:
                 }
             )
         latest_tag = str(payload.get("tag_name", "")).strip()
+        assets.extend(self.fallback_release_assets(latest_tag, assets))
         selected = self.choose_update_asset(assets)
         return {
             "current": APP_VERSION,
@@ -1334,15 +1336,87 @@ class FinanceService:
             "asset": selected,
         }
 
+    def fallback_release_assets(self, latest_tag: str, existing_assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        tag = str(latest_tag).strip()
+        if not tag:
+            return []
+
+        known_names = {str(item.get("name", "")).strip().lower() for item in existing_assets}
+        version = tag.lstrip("vV")
+        candidates: list[dict[str, Any]] = []
+
+        if os.name == "nt":
+            for name in (f"jarvis-buchhaltung-{version}-setup.exe", f"jarvis-buchhaltung-{version}-portable.exe"):
+                lower_name = name.lower()
+                if lower_name in known_names:
+                    continue
+                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/buchhaltung/{tag}/{name}"
+                if self.url_is_reachable(url):
+                    candidates.append({"name": name, "url": url, "size": 0})
+        else:
+            name = f"jarvis-buchhaltung_{version}_amd64.deb"
+            lower_name = name.lower()
+            if lower_name not in known_names:
+                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/buchhaltung/{tag}/dist/deb/{name}"
+                if self.url_is_reachable(url):
+                    candidates.append({"name": name, "url": url, "size": 0})
+
+        return candidates
+
+    def url_is_reachable(self, url: str) -> bool:
+        try:
+            request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "jarvis-buchhaltung-update-checker"})
+            with urllib.request.urlopen(request, timeout=6):
+                return True
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (405, 501):
+                return False
+        except (urllib.error.URLError, TimeoutError):
+            return False
+
+        try:
+            request = urllib.request.Request(url, method="GET", headers={"Range": "bytes=0-0", "User-Agent": "jarvis-buchhaltung-update-checker"})
+            with urllib.request.urlopen(request, timeout=6):
+                return True
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+            return False
+
+    def current_arch_tokens(self) -> tuple[str, ...]:
+        machine = platform.machine().lower()
+        if machine in ("x86_64", "amd64"):
+            return ("x64", "amd64", "x86_64", "win64")
+        if machine in ("aarch64", "arm64"):
+            return ("arm64", "aarch64")
+        return (machine,)
+
     def choose_update_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
         valid = [asset for asset in assets if asset.get("name") and asset.get("url")]
         if os.name == "nt":
-            for suffix in (".exe", ".msi"):
-                for asset in valid:
-                    if str(asset["name"]).lower().endswith(suffix):
-                        return asset
+            arch_tokens = self.current_arch_tokens()
+            choices: list[tuple[int, dict[str, Any]]] = []
+            for asset in valid:
+                name = str(asset["name"]).lower()
+                if not (name.endswith(".exe") or name.endswith(".msi")):
+                    continue
+                if "backend" in name:
+                    continue
+                score = 10
+                if name.endswith(".msi"):
+                    score += 20
+                if "setup" in name or "installer" in name:
+                    score += 30
+                if "portable" in name:
+                    score -= 10
+                if any(token in name for token in arch_tokens):
+                    score += 25
+                elif any(token in name for token in ("arm64", "aarch64", "x64", "amd64", "x86_64", "win64")):
+                    score -= 40
+                choices.append((score, asset))
+            if choices:
+                choices.sort(key=lambda item: item[0], reverse=True)
+                return choices[0][1]
             return None
-        for suffix in (".appimage", ".deb"):
+        for suffix in (".deb", ".appimage"):
             for asset in valid:
                 if str(asset["name"]).lower().endswith(suffix):
                     return asset
@@ -1368,6 +1442,8 @@ class FinanceService:
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
             raise FinanceError(f"Update-Download fehlgeschlagen: {exc}") from None
         launched = self.launch_update_installer(target_path)
+        if not launched:
+            raise FinanceError("Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
         return {"path": str(target_path), "launched": launched}
 
     def launch_update_installer(self, update_path: Path) -> bool:
@@ -1379,15 +1455,39 @@ class FinanceService:
             except OSError:
                 return False
         if name.endswith(".deb"):
-            try:
-                if shutil.which("pkexec"):
-                    subprocess.Popen(["pkexec", "dpkg", "-i", str(update_path)])
-                    return True
-                if shutil.which("xdg-open"):
-                    subprocess.Popen(["xdg-open", str(update_path)])
-                    return True
-            except OSError:
-                return False
+            apt_cmd = shutil.which("apt") or shutil.which("apt-get")
+            if shutil.which("pkexec") and apt_cmd:
+                try:
+                    result = subprocess.run(
+                        ["pkexec", apt_cmd, "install", "-y", str(update_path)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        return True
+                    stderr = (result.stderr or "").strip()
+                    if stderr:
+                        raise FinanceError(f"Update-Installation fehlgeschlagen: {stderr}")
+                    raise FinanceError(f"Update-Installation fehlgeschlagen (Code {result.returncode}).")
+                except OSError as exc:
+                    raise FinanceError(f"Update-Installation konnte nicht gestartet werden: {exc}") from None
+            if shutil.which("pkexec"):
+                try:
+                    result = subprocess.run(
+                        ["pkexec", "dpkg", "-i", str(update_path)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        return True
+                    stderr = (result.stderr or "").strip()
+                    if stderr:
+                        raise FinanceError(f"Update-Installation fehlgeschlagen: {stderr}")
+                    raise FinanceError(f"Update-Installation fehlgeschlagen (Code {result.returncode}).")
+                except OSError as exc:
+                    raise FinanceError(f"Update-Installation konnte nicht gestartet werden: {exc}") from None
             return False
         if name.endswith(".appimage"):
             try:

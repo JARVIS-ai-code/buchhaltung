@@ -705,10 +705,12 @@ document.addEventListener("click", async (event) => {
       if (!payload.update.is_newer) {
         showToast(`Du nutzt bereits die aktuelle Version (${payload.update.current}).`);
       } else if (!payload.update.asset) {
-        showToast("Update gefunden, aber kein passendes Paket für dieses System.");
+        const names = (payload.update.assets || []).map((asset) => asset.name).filter(Boolean).slice(0, 4);
+        const hint = names.length ? ` Verfügbar: ${names.join(", ")}` : "";
+        showToast(`Update gefunden, aber kein passendes Paket für dieses System.${hint}`);
       } else if (confirm(`Update ${payload.update.latest} installieren?`)) {
         await api("/api/update/install", { method: "POST", body: { asset: payload.update.asset } });
-        showToast("Update gestartet.");
+        showToast("Update installiert oder gestartet.");
       }
     }
   } catch (error) {
@@ -759,7 +761,7 @@ async function periodicTick() {
     state.announcedUpdateTag = update.latest;
     if (confirm(`Update ${update.latest} installieren?`)) {
       await api("/api/update/install", { method: "POST", body: { asset: update.asset } });
-      showToast("Update gestartet.");
+      showToast("Update installiert oder gestartet.");
     }
   } catch (error) {
     console.warn(error);
