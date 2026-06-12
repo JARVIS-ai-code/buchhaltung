@@ -204,6 +204,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/api/settings/reopen-month":
             service.reopen_month(str(payload.get("month", "")))
             return self.state_after(payload)
+        if method == "POST" and path == "/api/settings/delete-closed-month":
+            service.delete_closed_month(str(payload.get("month", "")))
+            return self.state_after(payload)
 
         if method == "POST" and path == "/api/income-sources":
             service.add_income_source(str(payload.get("name", "")))

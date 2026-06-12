@@ -73,6 +73,18 @@ button:disabled {
   opacity: 0.48;
 }
 
+input,
+select {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  color: #f5f6fc;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  outline: none;
+}
+
 .app-root {
   display: grid;
   grid-template-columns: 268px minmax(0, 1fr);
@@ -294,24 +306,14 @@ button:disabled {
   font-size: 12px;
 }
 
-input {
-  width: 100%;
-  min-height: 38px;
-  padding: 7px 10px;
-  color: #f5f6fc;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  outline: none;
-}
-
-input:focus {
+input:focus,
+select:focus {
   border-color: rgba(138, 92, 255, 0.64);
   box-shadow: 0 0 0 3px rgba(138, 92, 255, 0.16);
 }
 
 .custom-select {
-  position: relative;
+  position: static;
   min-width: 0;
 }
 
@@ -347,13 +349,20 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(138, 92, 255, 0.16);
 }
 
-.select-menu {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  max-height: 220px;
+.dropdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  pointer-events: none;
+}
+
+.dropdown-overlay[hidden] {
+  display: none;
+}
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 260;
   overflow: auto;
   padding: 6px;
   color: var(--text);
@@ -361,9 +370,10 @@ input:focus {
   border: 1px solid rgba(138, 92, 255, 0.38);
   border-radius: 14px;
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.48);
+  pointer-events: auto;
 }
 
-.select-menu button {
+.dropdown-menu button {
   display: block;
   width: 100%;
   min-height: 34px;
@@ -375,8 +385,8 @@ input:focus {
   text-align: left;
 }
 
-.select-menu button:hover,
-.select-menu button[aria-selected="true"] {
+.dropdown-menu button:hover,
+.dropdown-menu button[aria-selected="true"] {
   color: #ffffff;
   background: rgba(138, 92, 255, 0.26);
 }
@@ -467,6 +477,10 @@ input:focus {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.month-admin-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
 .reminder-row {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
@@ -543,6 +557,14 @@ input:focus {
 
 .chip {
   min-height: 34px;
+}
+
+.chip.closed-month {
+  opacity: 0.88;
+}
+
+.chip.closed-month:not(.active) {
+  border-style: dashed;
 }
 
 .payment-section {

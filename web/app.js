@@ -30,6 +30,93 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function getDropdownOverlay() {
+  return $("#dropdown-overlay");
+}
+
+function closeSelectMenu() {
+  const overlay = getDropdownOverlay();
+  if (overlay) {
+    overlay.hidden = true;
+    overlay.innerHTML = "";
+    delete overlay._activeCombo;
+  }
+  $$(".select-trigger[aria-expanded='true']").forEach((trigger) => {
+    trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function setSelectValue(combo, value, label) {
+  if (!combo) return;
+  const input = $("input[type='hidden']", combo);
+  const trigger = $(".select-trigger", combo);
+  const triggerLabel = $(".select-trigger span", combo);
+  if (input) input.value = value ?? "";
+  if (triggerLabel) triggerLabel.textContent = label ?? "";
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+}
+
+function positionSelectMenu(combo, menu) {
+  const trigger = $(".select-trigger", combo);
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const minWidth = Math.max(220, Math.round(rect.width));
+  const menuWidth = Math.min(360, Math.max(minWidth, Math.round(rect.width)));
+  const maxLeft = Math.max(12, viewportWidth - menuWidth - 12);
+  const left = Math.min(Math.max(12, rect.left), maxLeft);
+  const availableBelow = Math.max(140, Math.floor(viewportHeight - rect.bottom - 12));
+  const availableAbove = Math.max(140, Math.floor(rect.top - 12));
+  const openAbove = availableBelow < 180 && availableAbove > availableBelow;
+
+  menu.style.left = `${left}px`;
+  menu.style.width = `${menuWidth}px`;
+  menu.style.maxHeight = `${Math.max(140, openAbove ? availableAbove : availableBelow)}px`;
+  menu.style.top = openAbove ? "auto" : `${Math.round(rect.bottom + 6)}px`;
+  menu.style.bottom = openAbove ? `${Math.round(viewportHeight - rect.top + 6)}px` : "auto";
+  menu.dataset.placement = openAbove ? "above" : "below";
+}
+
+function openSelectMenu(combo) {
+  const overlay = getDropdownOverlay();
+  if (!overlay || !combo) return;
+  const trigger = $(".select-trigger", combo);
+  const selectedValue = $("input[type='hidden']", combo)?.value || "";
+  let options = [];
+  try {
+    options = JSON.parse(combo.dataset.selectOptions || "[]");
+  } catch {
+    options = [];
+  }
+  const normalized = Array.isArray(options) ? options : [];
+  const menu = document.createElement("div");
+  menu.className = "dropdown-menu";
+  menu.setAttribute("role", "listbox");
+  menu.tabIndex = -1;
+  menu.innerHTML = normalized.map((option) => `
+    <button type="button" role="option" data-select-option data-value="${escapeHtml(option.value)}" data-label="${escapeHtml(option.text)}" ${String(option.value) === String(selectedValue) ? "aria-selected=\"true\"" : ""}>
+      ${escapeHtml(option.text)}
+    </button>
+  `).join("");
+
+  overlay.innerHTML = "";
+  overlay.hidden = false;
+  overlay.append(menu);
+  overlay._activeCombo = combo;
+  positionSelectMenu(combo, menu);
+  trigger?.setAttribute("aria-expanded", "true");
+}
+
+function toggleSelectMenu(combo) {
+  const overlay = getDropdownOverlay();
+  if (!overlay) return;
+  const trigger = $(".select-trigger", combo);
+  const isOpen = Boolean(trigger && trigger.getAttribute("aria-expanded") === "true");
+  closeSelectMenu();
+  if (!isOpen) openSelectMenu(combo);
+}
+
 function todayText() {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
@@ -46,6 +133,29 @@ function monthFromTextDate(value) {
   const parts = String(value || "").split("-");
   if (parts.length !== 3) return "";
   return `${parts[2]}-${parts[1]}`;
+}
+
+function monthLabel(month) {
+  const parts = String(month || "").split("-");
+  if (parts.length !== 2) return String(month || "");
+  return `${parts[1]}-${parts[0]}`;
+}
+
+function collectVisibleMonths(data) {
+  const months = new Set();
+  if (data?.visible_month) months.add(data.visible_month);
+  (data?.closed_months || []).forEach((item) => {
+    if (item.month) months.add(item.month);
+  });
+  (data?.incomes || []).forEach((item) => {
+    const month = monthFromTextDate(item.date);
+    if (month) months.add(month);
+  });
+  (data?.expenses || []).forEach((item) => {
+    const month = monthFromTextDate(item.date);
+    if (month) months.add(month);
+  });
+  return [...months].sort().reverse();
 }
 
 function showToast(message) {
@@ -223,23 +333,15 @@ function selectField(label, name, options, selected = "") {
     return { value, text, isSelected };
   });
   const selectedOption = normalized.find((option) => option.isSelected) || normalized[0] || { value: "", text: "" };
-  const listId = `combo-${name}-${Math.random().toString(36).slice(2)}`;
   return `
     <label class="field">
       <span>${label}</span>
-      <div class="custom-select" data-combo>
+      <div class="custom-select" data-combo data-select-options="${escapeHtml(JSON.stringify(normalized))}">
         <input type="hidden" name="${name}" value="${escapeHtml(selectedOption.value)}">
-        <button class="select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="${listId}">
+        <button class="select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
           <span>${escapeHtml(selectedOption.text)}</span>
           <strong>⌄</strong>
         </button>
-        <div class="select-menu" id="${listId}" role="listbox" hidden>
-          ${normalized.map((option) => `
-            <button type="button" role="option" data-value="${escapeHtml(option.value)}" data-label="${escapeHtml(option.text)}" ${String(option.value) === String(selectedOption.value) ? "aria-selected=\"true\"" : ""}>
-              ${escapeHtml(option.text)}
-            </button>
-          `).join("")}
-        </div>
       </div>
     </label>
   `;
@@ -273,6 +375,7 @@ function accountOptions(selected = "") {
 
 function render() {
   if (!state.data) return;
+  closeSelectMenu();
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.page === state.page);
   });
@@ -624,6 +727,15 @@ function formatAmount(value) {
 
 function renderSettings() {
   const d = state.data;
+  const months = collectVisibleMonths(d);
+  const monthOptions = months.map((month) => {
+    const closed = (d.closed_months || []).some((item) => item.month === month);
+    return {
+      value: month,
+      label: `${monthLabel(month)}${closed ? " (geschlossen)" : ""}`,
+      selected: month === d.visible_month
+    };
+  });
   $("#page-settings").innerHTML = `
     <div class="grid">
       ${card("Grundeinstellungen", "Währung, Autostart und Updates", `
@@ -644,18 +756,25 @@ function renderSettings() {
         <p class="muted">Aktuelle Version: ${escapeHtml(d.version)}</p>
       `, 7)}
       ${card("Monatssteuerung", "Anzeigemonat und geschlossene Monate", `
+        <div class="section-label">Anzeigemonat</div>
         <form id="month-form" class="form-grid single">
-          ${field("Anzeigemonat", "month", d.visible_month_label, "placeholder=\"MM-JJJJ\"")}
+          ${selectField("Anzeigemonat", "month", monthOptions, d.visible_month)}
           <div class="actions">
-            <button class="solid" type="submit">Monat übernehmen</button>
+            <button class="solid" type="submit">Anzeigemonat übernehmen</button>
             <button class="ghost" type="button" data-action="close-month">Monat schließen</button>
           </div>
         </form>
-        <div class="list" style="margin-top:12px">
+        <form id="manual-month-form" class="form-grid single" style="margin-top:12px">
+          ${field("Neuen Monat beginnen", "month", "", "placeholder=\"MM-JJJJ\"")}
+          <div class="actions"><button class="ghost" type="submit">Monat manuell starten</button></div>
+        </form>
+        <div class="section-label" style="margin-top:16px">Geschlossene Monate</div>
+        <div class="list" style="margin-top:8px">
           ${(d.closed_months || []).map((item) => `
-            <div class="row">
+            <div class="row month-admin-row">
               <span>${escapeHtml(item.label)}</span>
-              <button class="ghost" data-action="reopen-month" data-month="${escapeHtml(item.month)}">Öffnen</button>
+              <button class="ghost" data-action="reopen-month" data-month="${escapeHtml(item.month)}">Öffnen & auswählen</button>
+              <button class="danger-button" data-action="delete-closed-month" data-month="${escapeHtml(item.month)}">Löschen</button>
             </div>
           `).join("") || `<p class="empty">Keine geschlossenen Monate.</p>`}
         </div>
@@ -701,6 +820,10 @@ function renderSettings() {
   bindForm($("#page-settings"), "#month-form", async (payload) => {
     await api("/api/settings/visible-month", { method: "POST", body: postContext(payload) });
     showToast("Anzeigemonat gesetzt.");
+  });
+  bindForm($("#page-settings"), "#manual-month-form", async (payload) => {
+    await api("/api/settings/visible-month", { method: "POST", body: postContext(payload) });
+    showToast("Neuer Monat gestartet.");
   });
   bindForm($("#page-settings"), "#account-form", async (payload, form) => {
     await api("/api/accounts", { method: "POST", body: postContext(payload) });
@@ -846,42 +969,31 @@ async function openReminderAccount(accountId) {
 }
 
 document.addEventListener("click", async (event) => {
-  const comboOption = event.target.closest(".select-menu button");
+  const comboOption = event.target.closest("[data-select-option]");
   if (comboOption) {
-    const combo = comboOption.closest("[data-combo]");
-    const input = $("input[type='hidden']", combo);
-    const trigger = $(".select-trigger", combo);
-    const menu = $(".select-menu", combo);
-    input.value = comboOption.dataset.value || "";
-    $(".select-trigger span", combo).textContent = comboOption.dataset.label || "";
-    $$(".select-menu button", combo).forEach((button) => button.removeAttribute("aria-selected"));
-    comboOption.setAttribute("aria-selected", "true");
-    menu.hidden = true;
-    trigger.setAttribute("aria-expanded", "false");
+    const overlay = getDropdownOverlay();
+    const combo = overlay?._activeCombo || null;
+    if (combo) {
+      setSelectValue(combo, comboOption.dataset.value || "", comboOption.dataset.label || "");
+      closeSelectMenu();
+    }
+    return;
+  }
+
+  if (event.target.closest(".dropdown-overlay") && !event.target.closest(".dropdown-menu")) {
+    closeSelectMenu();
     return;
   }
 
   const comboTrigger = event.target.closest(".select-trigger");
   if (comboTrigger) {
     const combo = comboTrigger.closest("[data-combo]");
-    const menu = $(".select-menu", combo);
-    const shouldOpen = menu.hidden;
-    $$(".select-menu").forEach((item) => {
-      item.hidden = true;
-      const itemTrigger = item.closest("[data-combo]")?.querySelector(".select-trigger");
-      itemTrigger?.setAttribute("aria-expanded", "false");
-    });
-    menu.hidden = !shouldOpen;
-    comboTrigger.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    toggleSelectMenu(combo);
     return;
   }
 
-  if (!event.target.closest("[data-combo]")) {
-    $$(".select-menu").forEach((item) => {
-      item.hidden = true;
-      const itemTrigger = item.closest("[data-combo]")?.querySelector(".select-trigger");
-      itemTrigger?.setAttribute("aria-expanded", "false");
-    });
+  if (!event.target.closest("[data-combo]") && !event.target.closest(".dropdown-overlay")) {
+    closeSelectMenu();
   }
 
   const target = event.target.closest("[data-action]");
@@ -945,7 +1057,16 @@ document.addEventListener("click", async (event) => {
       showToast("Monat geschlossen.");
     } else if (action === "reopen-month") {
       await api("/api/settings/reopen-month", { method: "POST", body: postContext({ month: target.dataset.month }) });
+      await api("/api/settings/visible-month", { method: "POST", body: postContext({ month: target.dataset.month }) });
       showToast("Monat geöffnet.");
+    } else if (action === "delete-closed-month") {
+      if (confirm("Diesen geschlossenen Monat wirklich löschen?")) {
+        await api("/api/settings/delete-closed-month", { method: "POST", body: postContext({ month: target.dataset.month }) });
+        showToast("Geschlossener Monat gelöscht.");
+      }
+    } else if (action === "select-month") {
+      await api("/api/settings/visible-month", { method: "POST", body: postContext({ month: target.dataset.month }) });
+      showToast("Anzeigemonat gesetzt.");
     } else if (action === "rename-source") {
       const row = target.closest(".source-row");
       const input = $("input", row);
@@ -980,6 +1101,12 @@ document.addEventListener("click", async (event) => {
     showToast(error.message);
   }
 });
+
+window.addEventListener("resize", closeSelectMenu);
+document.addEventListener("scroll", (event) => {
+  if (event.target instanceof Element && event.target.closest(".dropdown-menu")) return;
+  closeSelectMenu();
+}, true);
 
 document.addEventListener("change", async (event) => {
   const target = event.target;

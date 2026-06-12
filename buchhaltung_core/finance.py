@@ -1100,6 +1100,15 @@ class FinanceService:
         data["meta"]["closed_months"] = [item for item in self.clean_month_list(data["meta"].get("closed_months")) if item != parsed]
         self.save_payload(data)
 
+    def delete_closed_month(self, month: str) -> None:
+        data = self.load_payload()
+        parsed = parse_month_text(month)
+        closed = self.clean_month_list(data["meta"].get("closed_months"))
+        if parsed not in closed:
+            raise FinanceError("Geschlossener Monat nicht gefunden.")
+        data["meta"]["closed_months"] = [item for item in closed if item != parsed]
+        self.save_payload(data)
+
     def add_income_source(self, name: str) -> None:
         data = self.load_payload()
         text = str(name).strip()
