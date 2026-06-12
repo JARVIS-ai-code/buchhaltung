@@ -183,10 +183,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             service.update_recurring(parts[2], payload)
             return self.state_after(payload)
         if method == "DELETE" and len(parts) == 3 and parts[:2] == ["api", "recurring"]:
-            service.delete_recurring(parts[2])
+            service.delete_recurring(parts[2], str(payload.get("effective_scope") or "current"))
             return self.state_after(payload)
         if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "recurring"] and parts[3] == "checked":
             service.set_recurring_checked(parts[2], str(payload.get("month", "")), bool(payload.get("checked")))
+            return self.state_after(payload)
+        if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "recurring"] and parts[3] == "skip":
+            service.skip_recurring_month(parts[2], str(payload.get("month", "")))
             return self.state_after(payload)
 
         if method == "POST" and path == "/api/settings":

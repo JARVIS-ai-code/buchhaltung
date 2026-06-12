@@ -15,6 +15,9 @@ const state = {
   toastTimer: null
 };
 
+const REMINDER_SHOWN_DATE_KEY = "jarvis-buchhaltung-reminder-shown-date";
+const REMINDER_SNOOZED_DATE_KEY = "jarvis-buchhaltung-reminder-snoozed-date";
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -37,6 +40,12 @@ function defaultMonthDate() {
   const [year, monthNum] = month.split("-");
   if (year && monthNum) return `01-${monthNum}-${year}`;
   return todayText();
+}
+
+function monthFromTextDate(value) {
+  const parts = String(value || "").split("-");
+  if (parts.length !== 3) return "";
+  return `${parts[2]}-${parts[1]}`;
 }
 
 function showToast(message) {
@@ -272,6 +281,7 @@ function render() {
   renderReminder();
   renderStart();
   renderAccounts();
+  renderPayments();
   renderAnalysis();
   renderSettings();
 }
@@ -300,7 +310,18 @@ function overdueSignature(overdue) {
 }
 
 function todayIsoKey() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function setDailyReminderShown() {
+  localStorage.setItem(REMINDER_SHOWN_DATE_KEY, todayIsoKey());
+}
+
+function setDailyReminderSnoozed() {
+  const todayKey = todayIsoKey();
+  localStorage.setItem(REMINDER_SHOWN_DATE_KEY, todayKey);
+  localStorage.setItem(REMINDER_SNOOZED_DATE_KEY, todayKey);
 }
 
 function renderReminderModalList(overdue) {
@@ -308,12 +329,13 @@ function renderReminderModalList(overdue) {
   if (!list) return;
   const maxRows = 10;
   const rows = overdue.slice(0, maxRows).map((item) => `
-    <div class="row">
+    <div class="reminder-row">
       <div>
         <div class="row-title">${escapeHtml(item.account)} | ${escapeHtml(item.description)}</div>
         <div class="row-sub">fällig ${escapeHtml(item.due_date)} | ${escapeHtml(item.month_label || "")}</div>
       </div>
       <strong>${escapeHtml(item.amount_label)}</strong>
+      <button class="ghost" data-action="open-overdue-account" data-id="${escapeHtml(item.account_id || "")}">Konto öffnen</button>
     </div>
   `).join("");
   const extra = overdue.length > maxRows ? `<div class="empty">+ ${overdue.length - maxRows} weitere überfällige Zahlung(en)</div>` : "";
@@ -324,6 +346,7 @@ function showReminderModal(overdue) {
   const modal = $("#reminder-modal");
   if (!modal) return;
   renderReminderModalList(overdue);
+  setDailyReminderShown();
   if (!modal.open) {
     modal.showModal();
   }
@@ -332,24 +355,22 @@ function showReminderModal(overdue) {
 function maybeShowReminderPopup(force = false) {
   if (!state.data) return;
   const overdue = state.data.overdue || [];
+  const todayKey = todayIsoKey();
   if (!overdue.length) {
     state.lastReminderSignature = "";
+    state.lastReminderDay = todayKey;
     return;
   }
 
-  const signature = overdueSignature(overdue);
-  const todayKey = todayIsoKey();
-  const dayChanged = state.lastReminderDay !== "" && state.lastReminderDay !== todayKey;
-  const isNewSignature = signature !== state.lastReminderSignature;
-  const intervalMinutes = Math.max(1, Number(state.data.settings?.reminder_interval_minutes || 15));
-  const cooldownMs = intervalMinutes * 60 * 1000;
-  const cooldownPassed = (Date.now() - state.lastReminderShownAt) >= cooldownMs;
-
-  const shouldShow = force || isNewSignature || dayChanged || cooldownPassed;
+  const shownToday = localStorage.getItem(REMINDER_SHOWN_DATE_KEY) === todayKey;
+  const snoozedToday = localStorage.getItem(REMINDER_SNOOZED_DATE_KEY) === todayKey;
+  const dayChanged = state.lastReminderDay !== todayKey;
+  const shouldShow = (force || dayChanged) && !shownToday && !snoozedToday;
+  state.lastReminderDay = todayKey;
   if (!shouldShow) return;
 
   showReminderModal(overdue);
-  state.lastReminderSignature = signature;
+  state.lastReminderSignature = overdueSignature(overdue);
   state.lastReminderDay = todayKey;
   state.lastReminderShownAt = Date.now();
 }
@@ -392,7 +413,7 @@ function renderStart() {
           ${(d.recent_incomes || []).map((item) => transactionRow(item, "income")).join("") || `<p class="empty">Keine Einnahmen im ausgewählten Monat.</p>`}
         </div>
       `, 6)}
-      ${card("Nächste Zahlungen je Konto", "Fällige und kommende Dauerzahlungen", `
+      ${card("Nächste Zahlungen je Konto", "Noch offene Zahlungen diesen Monat", `
         <div class="list">
           ${(d.next_due || []).map((item) => `
             <div class="row">
@@ -402,7 +423,7 @@ function renderStart() {
               </div>
               <strong>${escapeHtml(item.amount_label)}</strong>
             </div>
-          `).join("") || `<p class="empty">Keine Dauerzahlungen angelegt.</p>`}
+          `).join("") || `<p class="empty">Keine ausstehenden Zahlungen diesen Monat.</p>`}
         </div>
       `, 6)}
     </div>
@@ -438,6 +459,15 @@ function transactionRow(item, kind) {
 function renderAccounts() {
   const d = state.data;
   const selected = state.selectedAccountId;
+  const visibleMonth = d.visible_month;
+  const selectedRecurring = [...(d.selected_recurring || [])].sort((a, b) => {
+    const aChecked = (a.checked_months || []).includes(visibleMonth) ? 1 : 0;
+    const bChecked = (b.checked_months || []).includes(visibleMonth) ? 1 : 0;
+    if (aChecked !== bChecked) return aChecked - bChecked;
+    return Number(a.day || 0) - Number(b.day || 0) || String(a.description || "").localeCompare(String(b.description || ""), "de");
+  });
+  const openRecurring = selectedRecurring.filter((rec) => !(rec.checked_months || []).includes(visibleMonth));
+  const paidRecurring = selectedRecurring.filter((rec) => (rec.checked_months || []).includes(visibleMonth));
   $("#page-accounts").innerHTML = `
     <div class="grid">
       ${card("Kontofokus", "Dauerzahlungen nach Konto", `
@@ -447,14 +477,24 @@ function renderAccounts() {
           `).join("") || `<p class="empty">Keine Konten vorhanden.</p>`}
         </div>
         <div class="actions">
-          <button class="solid" data-action="new-recurring">Dauerzahlung hinzufügen</button>
-          <button class="ghost" data-action="new-installment">Abzahlung</button>
+          <button class="ghost" data-action="open-payments">Alle Zahlungen</button>
         </div>
       `, 12)}
       ${card("Aktive Dauerzahlungen", "Status für den Anzeigemonat", `
-        <div class="list">
-          ${(d.selected_recurring || []).map((rec) => recurringRow(rec)).join("") || `<p class="empty">Keine Dauerzahlungen im ausgewählten Konto.</p>`}
-        </div>
+        ${selectedRecurring.length ? `
+          <div class="payment-section">
+            <div class="section-label">Offen</div>
+            <div class="list">
+              ${openRecurring.map((rec) => recurringRow(rec)).join("") || `<p class="empty">Keine offenen Zahlungen.</p>`}
+            </div>
+          </div>
+          <div class="payment-section paid">
+            <div class="section-label">Erledigt</div>
+            <div class="list">
+              ${paidRecurring.map((rec) => recurringRow(rec)).join("") || `<p class="empty">Keine erledigten Zahlungen.</p>`}
+            </div>
+          </div>
+        ` : `<p class="empty">Keine Dauerzahlungen im ausgewählten Konto.</p>`}
       `, 12)}
     </div>
   `;
@@ -462,8 +502,9 @@ function renderAccounts() {
 
 function recurringRow(rec) {
   const checked = (rec.checked_months || []).includes(state.data.visible_month);
-  const amount = formatRecAmount(rec);
+  const amount = rec.current_amount_label || formatRecAmount(rec);
   const freq = rec.kind === "installment" ? "Abzahlung" : ({ monthly: "Monatlich", quarterly: "Quartal", yearly: "Jährlich" }[rec.frequency] || "Monatlich");
+  const currentEditId = rec.current_expense_id || "";
   return `
     <div class="recurring-row">
       <label class="check-pill">
@@ -475,7 +516,53 @@ function recurringRow(rec) {
         <div class="row-sub">${freq} am ${String(rec.day).padStart(2, "0")}. | Start ${escapeHtml(rec.start_date || "-")}${rec.end_date ? ` | Ende ${escapeHtml(rec.end_date)}` : ""}</div>
       </div>
       <strong>${escapeHtml(amount)}</strong>
-      <button class="icon-button" title="Bearbeiten" data-action="edit-recurring" data-id="${escapeHtml(rec.id)}">✎</button>
+      <button class="icon-button" title="Diesen Monat bearbeiten" data-action="edit-current-payment" data-id="${escapeHtml(currentEditId)}" ${currentEditId ? "" : "disabled"}>✎</button>
+      <button class="icon-button danger-button" title="Nur diesen Monat entfernen" data-action="delete-current-payment" data-id="${escapeHtml(rec.id)}">×</button>
+    </div>
+  `;
+}
+
+function renderPayments() {
+  const d = state.data;
+  const accounts = d.accounts || [];
+  const visibleMonth = d.visible_month || "";
+  const recurring = [...(d.recurring || [])].sort((a, b) => (
+    Number(a.day || 0) - Number(b.day || 0) || String(a.description || "").localeCompare(String(b.description || ""), "de")
+  )).filter((rec) => {
+    const endMonth = monthFromTextDate(rec.end_date);
+    return !endMonth || endMonth >= visibleMonth;
+  });
+  $("#page-payments").innerHTML = `
+    <div class="grid">
+      ${card("Alle Zahlungen", "Globale Dauerzahlungen und Abzahlungen", `
+        <div class="actions">
+          <button class="solid" data-action="new-recurring">Dauerzahlung hinzufügen</button>
+          <button class="ghost" data-action="new-installment">Abzahlung</button>
+        </div>
+      `, 12)}
+      ${accounts.map((account) => {
+        const rows = recurring.filter((rec) => rec.account_id === account.id);
+        return card(account.name, `${rows.length} globale Zahlung(en)`, `
+          <div class="list">
+            ${rows.map((rec) => paymentRow(rec)).join("") || `<p class="empty">Keine Zahlungen für dieses Konto.</p>`}
+          </div>
+        `, 12);
+      }).join("") || card("Keine Konten", "Lege zuerst ein Konto in den Einstellungen an.", `<p class="empty">Keine Zahlungen angelegt.</p>`, 12)}
+    </div>
+  `;
+}
+
+function paymentRow(rec) {
+  const account = state.data.account_names?.[rec.account_id] || "-";
+  const freq = rec.kind === "installment" ? "Abzahlung" : ({ monthly: "Monatlich", quarterly: "Quartal", yearly: "Jährlich" }[rec.frequency] || "Monatlich");
+  return `
+    <div class="payment-row">
+      <div>
+        <div class="row-title">${escapeHtml(rec.description)}</div>
+        <div class="row-sub">${escapeHtml(account)} | ${freq} am ${String(rec.day).padStart(2, "0")}. | Start ${escapeHtml(rec.start_date || "-")}${rec.end_date ? ` | Ende ${escapeHtml(rec.end_date)}` : ""}</div>
+      </div>
+      <strong>${escapeHtml(formatRecAmount(rec))}</strong>
+      <button class="icon-button" title="Global bearbeiten" data-action="edit-recurring" data-id="${escapeHtml(rec.id)}">✎</button>
       <button class="icon-button danger-button" title="Löschen" data-action="delete-recurring" data-id="${escapeHtml(rec.id)}">×</button>
     </div>
   `;
@@ -520,12 +607,7 @@ function renderAnalysis() {
             </div>
           `).join("") || `<p class="empty">Keine Ausgaben im ausgewählten Filter.</p>`}
         </div>
-      `, 5)}
-      ${card("Ausgaben", "Bearbeiten oder löschen", `
-        <div class="list">
-          ${(d.expenses || []).map((item) => transactionRow({ ...item, amount_label: formatAmount(item.amount) }, "expense")).join("") || `<p class="empty">Keine Ausgaben im ausgewählten Monat.</p>`}
-        </div>
-      `, 7)}
+      `, 12)}
     </div>
   `;
   bindForm($("#page-analysis"), "#expense-form", async (payload, form) => {
@@ -547,7 +629,6 @@ function renderSettings() {
       ${card("Grundeinstellungen", "Währung, Autostart und Updates", `
         <form id="settings-form" class="form-grid">
           ${field("Währung", "currency", d.settings.currency || "EUR")}
-          ${field("Erinnerung alle Minuten", "reminder_interval_minutes", d.settings.reminder_interval_minutes || 15, "type=\"number\" min=\"1\" max=\"240\"")}
           ${field("Update-Prüfung alle Stunden", "update_check_interval_hours", d.settings.update_check_interval_hours || 6, "type=\"number\" min=\"1\" max=\"168\"")}
           <label class="check-pill"><input type="checkbox" name="autostart_enabled" ${d.settings.autostart_enabled ? "checked" : ""}>Autostart aktivieren</label>
           <label class="check-pill"><input type="checkbox" name="autostart_open_window" ${d.settings.autostart_open_window ? "checked" : ""}>Beim Systemstart Fenster öffnen</label>
@@ -659,6 +740,31 @@ function openModal(title, html, onSubmit) {
   modal.showModal();
 }
 
+function chooseGlobalScope(kind) {
+  const action = kind === "delete" ? "gelöscht" : "geändert";
+  const modal = $("#modal");
+  return new Promise((resolve) => {
+    modal.innerHTML = `
+      <form method="dialog">
+        <h2>Zeitpunkt wählen</h2>
+        <div class="subtitle">Ab wann soll diese Zahlung ${action} werden?</div>
+        <div class="actions">
+          <button class="solid" value="current" type="submit">Ab diesem Monat</button>
+          <button class="ghost" value="next" type="submit">Ab nächstem Monat</button>
+          <button class="ghost" value="cancel" type="submit">Abbrechen</button>
+        </div>
+      </form>
+    `;
+    $("form", modal).addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = event.submitter?.value || "cancel";
+      modal.close();
+      resolve(value === "cancel" ? null : value);
+    });
+    modal.showModal();
+  });
+}
+
 function recurringModal(rec = null, kind = "standard") {
   const isInstallment = kind === "installment" || rec?.kind === "installment";
   const html = `
@@ -679,6 +785,8 @@ function recurringModal(rec = null, kind = "standard") {
     payload.kind = isInstallment ? "installment" : "standard";
     payload.frequency = isInstallment ? "monthly" : payload.frequency;
     if (rec) {
+      payload.effective_scope = await chooseGlobalScope("edit");
+      if (!payload.effective_scope) return;
       await api(`/api/recurring/${rec.id}`, { method: "PUT", body: postContext(payload) });
       showToast("Dauerzahlung aktualisiert.");
     } else {
@@ -703,6 +811,38 @@ function transactionModal(item, kind) {
     await api(`/api/${isIncome ? "incomes" : "expenses"}/${item.id}`, { method: "PUT", body: postContext(payload) });
     showToast(isIncome ? "Einnahme aktualisiert." : "Ausgabe aktualisiert.");
   });
+}
+
+function currentPaymentModal(item) {
+  const html = `
+    ${field("Betrag für diesen Monat", "amount", item.amount || "", "inputmode=\"decimal\" required")}
+  `;
+  openModal("Zahlung diesen Monat bearbeiten", html, async (payload) => {
+    await api(`/api/expenses/${item.id}`, {
+      method: "PUT",
+      body: postContext({
+        account_id: item.account_id,
+        description: item.description,
+        source: item.source,
+        recurring_plan_id: item.recurring_plan_id,
+        recurring_month: item.recurring_month,
+        amount: payload.amount,
+        date: item.date
+      })
+    });
+    showToast("Zahlung für diesen Monat aktualisiert.");
+  });
+}
+
+async function openReminderAccount(accountId) {
+  if (!accountId) return;
+  state.selectedAccountId = accountId;
+  state.page = "accounts";
+  const modal = $("#reminder-modal");
+  if (modal?.open) {
+    modal.close();
+  }
+  await loadState();
 }
 
 document.addEventListener("click", async (event) => {
@@ -752,6 +892,11 @@ document.addEventListener("click", async (event) => {
     if (action === "select-account") {
       state.selectedAccountId = id;
       await loadState();
+    } else if (action === "open-payments") {
+      state.page = "payments";
+      render();
+    } else if (action === "open-overdue-account") {
+      await openReminderAccount(id);
     } else if (action === "new-recurring") {
       recurringModal(null, "standard");
     } else if (action === "new-installment") {
@@ -759,9 +904,22 @@ document.addEventListener("click", async (event) => {
     } else if (action === "edit-recurring") {
       const rec = state.data.recurring.find((item) => item.id === id);
       if (rec) recurringModal(rec, rec.kind);
+    } else if (action === "edit-current-payment") {
+      const item = state.data.expenses.find((entry) => entry.id === id);
+      if (item) currentPaymentModal(item);
+    } else if (action === "delete-current-payment") {
+      if (confirm("Diese Zahlung nur im aktuell ausgewählten Monat entfernen?")) {
+        await api(`/api/recurring/${id}/skip`, {
+          method: "POST",
+          body: postContext({ month: state.data.visible_month })
+        });
+        showToast("Zahlung für diesen Monat entfernt.");
+      }
     } else if (action === "delete-recurring") {
-      if (confirm("Diesen Eintrag wirklich löschen?")) {
-        await api(`/api/recurring/${id}`, { method: "DELETE", body: postContext() });
+      if (confirm("Diese Zahlung global löschen? Vergangene Monate bleiben unverändert.")) {
+        const effective_scope = await chooseGlobalScope("delete");
+        if (!effective_scope) return;
+        await api(`/api/recurring/${id}`, { method: "DELETE", body: postContext({ effective_scope }) });
         showToast("Dauerzahlung gelöscht.");
       }
     } else if (action === "edit-income" || action === "edit-expense") {
@@ -877,9 +1035,16 @@ setTimeout(periodicTick, 30 * 1000);
 
 const reminderOpenAccountsBtn = $("#reminder-open-accounts");
 if (reminderOpenAccountsBtn) {
-  reminderOpenAccountsBtn.addEventListener("click", () => {
-    state.page = "accounts";
-    render();
+  reminderOpenAccountsBtn.addEventListener("click", async () => {
+    const first = (state.data?.overdue || [])[0];
+    await openReminderAccount(first?.account_id || state.selectedAccountId);
+  });
+}
+
+const reminderSnoozeBtn = $("#reminder-snooze");
+if (reminderSnoozeBtn) {
+  reminderSnoozeBtn.addEventListener("click", () => {
+    setDailyReminderSnoozed();
     const modal = $("#reminder-modal");
     if (modal?.open) {
       modal.close();

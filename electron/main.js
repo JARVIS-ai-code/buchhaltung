@@ -5,6 +5,8 @@ const path = require("path");
 
 let mainWindow = null;
 let backend = null;
+let backendUrl = "";
+let lastMidnightFocusDate = "";
 
 function pythonCandidates() {
   if (process.platform === "win32") {
@@ -133,6 +135,38 @@ function startBackend() {
   });
 }
 
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function focusMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function startMidnightReminderFocus() {
+  lastMidnightFocusDate = todayKey();
+  setInterval(async () => {
+    const currentDate = todayKey();
+    if (currentDate === lastMidnightFocusDate || !backendUrl) return;
+    lastMidnightFocusDate = currentDate;
+    try {
+      const response = await fetch(`${backendUrl}/api/overdue`);
+      const payload = await response.json();
+      if (payload?.ok && Array.isArray(payload.overdue) && payload.overdue.length > 0) {
+        focusMainWindow();
+      }
+    } catch (_error) {
+      // The renderer will retry normal reminder checks; focusing is best effort.
+    }
+  }, 60 * 1000);
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1380,
@@ -152,8 +186,10 @@ async function createWindow() {
   mainWindow.removeMenu();
 
   try {
-    const backendUrl = await startBackend();
+    backendUrl = await startBackend();
     await mainWindow.loadURL(backendUrl);
+    focusMainWindow();
+    startMidnightReminderFocus();
   } catch (error) {
     dialog.showErrorBox("JARVIS Buchhaltung", error.message || String(error));
     app.quit();

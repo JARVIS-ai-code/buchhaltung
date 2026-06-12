@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS recurring_payments (
     start_date TEXT,
     end_date TEXT,
     final_amount REAL,
-    checked_months TEXT NOT NULL
+    checked_months TEXT NOT NULL,
+    skipped_months TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
@@ -296,12 +297,14 @@ def is_recurring_due_in_month(recurring: dict[str, Any], target_month: str, fall
     start = recurring_start_month(recurring, fallback_month or target_month)
     if month_distance(start, target_month) < 0:
         return False
+    if target_month in recurring.get("skipped_months", []):
+        return False
+    end = recurring_end_month(recurring)
+    if end and month_distance(target_month, end) < 0:
+        return False
 
     kind = str(recurring.get("kind", "standard"))
     if kind == "installment":
-        end = recurring_end_month(recurring)
-        if end and month_distance(target_month, end) < 0:
-            return False
         step = 1
     else:
         step = frequency_step(str(recurring.get("frequency", "monthly")))
@@ -372,6 +375,9 @@ class FinanceService:
     def initialize_db(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(recurring_payments)")}
+            if "skipped_months" not in columns:
+                conn.execute("ALTER TABLE recurring_payments ADD COLUMN skipped_months TEXT NOT NULL DEFAULT '[]'")
 
     def db_is_empty(self) -> bool:
         with self.connect() as conn:
@@ -424,7 +430,7 @@ class FinanceService:
             data["accounts"] = [dict(row) for row in conn.execute("SELECT id, name FROM accounts ORDER BY name COLLATE NOCASE")]
             data["recurring_payments"] = [self.recurring_from_row(row) for row in conn.execute(
                 """
-                SELECT id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months
+                SELECT id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months, skipped_months
                 FROM recurring_payments
                 ORDER BY day, description COLLATE NOCASE
                 """
@@ -462,8 +468,8 @@ class FinanceService:
                 conn.execute(
                     """
                     INSERT INTO recurring_payments(
-                        id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months, skipped_months
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         rec["id"],
@@ -477,6 +483,7 @@ class FinanceService:
                         rec.get("end_date") or "",
                         rec.get("final_amount"),
                         json.dumps(rec.get("checked_months", []), ensure_ascii=False),
+                        json.dumps(rec.get("skipped_months", []), ensure_ascii=False),
                     ),
                 )
             for expense in data["expenses"]:
@@ -550,6 +557,10 @@ class FinanceService:
             checked = json.loads(row["checked_months"] or "[]")
         except json.JSONDecodeError:
             checked = []
+        try:
+            skipped = json.loads(row["skipped_months"] or "[]")
+        except (IndexError, json.JSONDecodeError):
+            skipped = []
         return {
             "id": row["id"],
             "kind": row["kind"],
@@ -562,6 +573,7 @@ class FinanceService:
             "end_date": row["end_date"] or "",
             "final_amount": row["final_amount"],
             "checked_months": checked if isinstance(checked, list) else [],
+            "skipped_months": skipped if isinstance(skipped, list) else [],
         }
 
     def clean_income_sources(self, sources: Any) -> list[str]:
@@ -643,9 +655,10 @@ class FinanceService:
                     "day": day,
                     "frequency": "monthly" if kind == "installment" else frequency,
                     "start_date": start_date,
-                    "end_date": end_date if kind == "installment" else "",
+                    "end_date": end_date,
                     "final_amount": final_amount if kind == "installment" else None,
                     "checked_months": self.clean_month_list(item.get("checked_months")),
+                    "skipped_months": self.clean_month_list(item.get("skipped_months")),
                 }
             )
         return cleaned
@@ -854,16 +867,134 @@ class FinanceService:
         rec = next((item for item in data["recurring_payments"] if item["id"] == recurring_id), None)
         if rec is None:
             raise FinanceError("Dauerzahlung nicht gefunden.")
-        checked_months = rec.get("checked_months", [])
-        rec.update(self.validate_recurring_payload(payload, data))
-        rec["checked_months"] = checked_months
+        scope = str(payload.get("effective_scope") or "current")
+        if scope not in ("current", "next"):
+            scope = "current"
+        effective_month = self.visible_month(data) if scope == "current" else month_shift(self.visible_month(data), 1)
+        entry = self.validate_recurring_payload(payload, data)
+        if recurring_start_month(rec, self.visible_month(data)) >= effective_month:
+            checked_months = rec.get("checked_months", [])
+            skipped_months = rec.get("skipped_months", [])
+            rec.update(entry)
+            rec["checked_months"] = checked_months
+            rec["skipped_months"] = skipped_months
+            self.update_recurring_expenses_from_month(data, rec, effective_month)
+        else:
+            rec["end_date"] = self.month_end_date_text(month_shift(effective_month, -1))
+            new_id = str(uuid.uuid4())
+            new_rec = {
+                "id": new_id,
+                **entry,
+                "start_date": self.month_start_date_text(effective_month),
+                "checked_months": [],
+                "skipped_months": [],
+            }
+            data["recurring_payments"].append(new_rec)
+            if scope == "current":
+                self.move_month_expense_to_recurring(data, rec, new_rec, effective_month)
+            self.remove_recurring_expenses_from_month(data, rec["id"], effective_month, include_future=True)
         self.apply_recurring_for_visible_and_current(data, force=True)
         self.save_payload(data)
 
-    def delete_recurring(self, recurring_id: str) -> None:
+    def delete_recurring(self, recurring_id: str, scope: str = "current") -> None:
         data = self.load_payload()
-        data["recurring_payments"] = [item for item in data["recurring_payments"] if item["id"] != recurring_id]
+        rec = next((item for item in data["recurring_payments"] if item["id"] == recurring_id), None)
+        if rec is None:
+            return
+        if scope not in ("current", "next"):
+            scope = "current"
+        effective_month = self.visible_month(data) if scope == "current" else month_shift(self.visible_month(data), 1)
+        rec["end_date"] = self.month_end_date_text(month_shift(effective_month, -1))
+        self.remove_recurring_expenses_from_month(data, recurring_id, effective_month, include_future=True)
         self.save_payload(data)
+
+    def skip_recurring_month(self, recurring_id: str, month: str) -> None:
+        data = self.load_payload()
+        month = parse_month_text(month)
+        self.require_open_month(month, data)
+        rec = next((item for item in data["recurring_payments"] if item["id"] == recurring_id), None)
+        if rec is None:
+            raise FinanceError("Dauerzahlung nicht gefunden.")
+        if not is_recurring_due_in_month({**rec, "skipped_months": []}, month, self.visible_month(data)):
+            raise FinanceError("Diese Zahlung ist im Monat nicht fällig.")
+        skipped = self.clean_month_list(rec.get("skipped_months"))
+        checked = self.clean_month_list(rec.get("checked_months"))
+        if month not in skipped:
+            skipped.append(month)
+        if month in checked:
+            checked.remove(month)
+        rec["skipped_months"] = sorted(skipped)
+        rec["checked_months"] = sorted(checked)
+        self.remove_recurring_expenses_from_month(data, recurring_id, month, include_future=False)
+        self.save_payload(data)
+
+    def month_start_date_text(self, month: str) -> str:
+        year_text, month_text = month.split("-")
+        return f"01-{month_text}-{year_text}"
+
+    def month_end_date_text(self, month: str) -> str:
+        year, month_num = [int(part) for part in month.split("-")]
+        return date_to_text(clamped_date(year, month_num, 28))
+
+    def remove_recurring_expenses_from_month(
+        self,
+        data: dict[str, Any],
+        recurring_id: str,
+        month: str,
+        include_future: bool,
+    ) -> None:
+        data["expenses"] = [
+            expense
+            for expense in data["expenses"]
+            if not (
+                expense.get("recurring_plan_id") == recurring_id
+                and (
+                    str(expense.get("recurring_month")) >= month
+                    if include_future
+                    else expense.get("recurring_month") == month
+                )
+            )
+        ]
+
+    def move_month_expense_to_recurring(
+        self,
+        data: dict[str, Any],
+        old_rec: dict[str, Any],
+        new_rec: dict[str, Any],
+        month: str,
+    ) -> None:
+        for expense in data["expenses"]:
+            if expense.get("recurring_plan_id") != old_rec.get("id") or expense.get("recurring_month") != month:
+                continue
+            year_text, month_text = month.split("-")
+            expense.update(
+                {
+                    "account_id": new_rec["account_id"],
+                    "description": new_rec["description"],
+                    "amount": recurring_amount_for_month(new_rec, month),
+                    "date": f"{safe_recurring_day(new_rec):02d}-{month_text}-{year_text}",
+                    "source": "installment" if new_rec.get("kind") == "installment" else "recurring",
+                    "recurring_plan_id": new_rec["id"],
+                    "recurring_month": month,
+                }
+            )
+            break
+
+    def update_recurring_expenses_from_month(self, data: dict[str, Any], rec: dict[str, Any], month: str) -> None:
+        for expense in data["expenses"]:
+            if expense.get("recurring_plan_id") != rec.get("id") or str(expense.get("recurring_month")) < month:
+                continue
+            expense_month = str(expense.get("recurring_month"))
+            year_text, month_text = expense_month.split("-")
+            expense.update(
+                {
+                    "account_id": rec["account_id"],
+                    "description": rec["description"],
+                    "amount": recurring_amount_for_month(rec, expense_month),
+                    "date": f"{safe_recurring_day(rec):02d}-{month_text}-{year_text}",
+                    "source": "installment" if rec.get("kind") == "installment" else "recurring",
+                }
+            )
 
     def validate_recurring_payload(self, payload: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         account_id = str(payload.get("account_id", "")).strip()
@@ -1068,6 +1199,11 @@ class FinanceService:
         open_amounts = {account_id: 0.0 for account_id in account_ids}
         if self.month_is_closed(month, data):
             return open_amounts
+        expenses_by_plan = {
+            str(expense.get("recurring_plan_id")): expense
+            for expense in data["expenses"]
+            if expense.get("recurring_plan_id") and expense.get("recurring_month") == month
+        }
         for rec in data["recurring_payments"]:
             if not is_recurring_due_in_month(rec, month, self.visible_month(data)):
                 continue
@@ -1075,33 +1211,47 @@ class FinanceService:
             if checked:
                 continue
             account_id = str(rec.get("account_id", ""))
-            open_amounts[account_id] = open_amounts.get(account_id, 0.0) + recurring_amount_for_month(rec, month)
+            expense = expenses_by_plan.get(str(rec.get("id", "")))
+            amount = float(expense.get("amount", 0.0)) if expense else recurring_amount_for_month(rec, month)
+            open_amounts[account_id] = open_amounts.get(account_id, 0.0) + amount
         return open_amounts
 
     def next_due_rows(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         today = date.today()
+        current_month = month_key(today)
         names = self.account_name_map(data)
+        if self.month_is_closed(current_month, data):
+            return rows
+        expenses_by_plan = {
+            str(expense.get("recurring_plan_id")): expense
+            for expense in data["expenses"]
+            if expense.get("recurring_plan_id") and expense.get("recurring_month") == current_month
+        }
         for rec in data["recurring_payments"]:
-            probe_month = month_key(today)
-            for _ in range(60):
-                if is_recurring_due_in_month(rec, probe_month, self.visible_month(data)):
-                    checked = probe_month in rec.get("checked_months", [])
-                    y, m = [int(part) for part in probe_month.split("-")]
-                    due = clamped_date(y, m, safe_recurring_day(rec))
-                    if due >= today or not checked:
-                        rows.append(
-                            {
-                                "account": names.get(rec["account_id"], "-"),
-                                "account_id": rec["account_id"],
-                                "description": rec["description"],
-                                "due": date_to_text(due),
-                                "due_month": probe_month,
-                                "amount": recurring_amount_for_month(rec, probe_month),
-                            }
+            if not is_recurring_due_in_month(rec, current_month, self.visible_month(data)):
+                continue
+            if current_month in rec.get("checked_months", []):
+                continue
+            year, month = [int(part) for part in current_month.split("-")]
+            due = clamped_date(year, month, safe_recurring_day(rec))
+            if due < today:
+                continue
+            rows.append(
+                {
+                    "account": names.get(rec["account_id"], "-"),
+                    "account_id": rec["account_id"],
+                    "description": rec["description"],
+                    "due": date_to_text(due),
+                    "due_month": current_month,
+                    "amount": float(
+                        expenses_by_plan.get(str(rec.get("id", "")), {}).get(
+                            "amount",
+                            recurring_amount_for_month(rec, current_month),
                         )
-                        break
-                probe_month = month_shift(probe_month, 1)
+                    ),
+                }
+            )
         rows.sort(key=lambda item: (item["account"], item["due"], item["description"]))
         return rows
 
@@ -1111,6 +1261,11 @@ class FinanceService:
         current_month = month_key(today)
         names = self.account_name_map(payload)
         currency = str(payload["settings"].get("currency", "EUR"))
+        expenses_by_plan_month = {
+            (str(expense.get("recurring_plan_id")), str(expense.get("recurring_month"))): expense
+            for expense in payload["expenses"]
+            if expense.get("recurring_plan_id") and expense.get("recurring_month")
+        }
         items: list[dict[str, Any]] = []
         for rec in payload["recurring_payments"]:
             for due_month in self.iter_due_months_until_today(rec, current_month, payload):
@@ -1122,11 +1277,17 @@ class FinanceService:
                 due_date = clamped_date(int(year_text), int(month_text), safe_recurring_day(rec))
                 if due_date >= today:
                     continue
-                amount = recurring_amount_for_month(rec, due_month)
+                amount = float(
+                    expenses_by_plan_month.get((str(rec.get("id", "")), due_month), {}).get(
+                        "amount",
+                        recurring_amount_for_month(rec, due_month),
+                    )
+                )
                 items.append(
                     {
                         "key": f"{rec.get('id','')}:{due_month}",
                         "account": names.get(rec["account_id"], "-"),
+                        "account_id": rec["account_id"],
                         "description": rec["description"],
                         "month": due_month,
                         "month_label": format_month_label(due_month),
@@ -1142,22 +1303,15 @@ class FinanceService:
         start = recurring_start_month(recurring, self.visible_month(data))
         if start > current_month:
             return []
-        if str(recurring.get("kind", "standard")) == "installment":
-            end = recurring_end_month(recurring) or current_month
-            if end > current_month:
-                end = current_month
-            months: list[str] = []
-            probe = start
-            for _ in range(240):
-                if probe > end:
-                    break
-                if is_recurring_due_in_month(recurring, probe, self.visible_month(data)):
-                    months.append(probe)
-                probe = month_shift(probe, 1)
-            return months
-        step = frequency_step(str(recurring.get("frequency", "monthly")))
-        distance = month_distance(start, current_month)
-        return [month_shift(start, offset) for offset in range(0, distance + 1, step)]
+        months: list[str] = []
+        probe = start
+        for _ in range(240):
+            if probe > current_month:
+                break
+            if is_recurring_due_in_month(recurring, probe, self.visible_month(data)):
+                months.append(probe)
+            probe = month_shift(probe, 1)
+        return months
 
     def build_state(self, analysis_filter_account: str | None = None, selected_account_id: str | None = None) -> dict[str, Any]:
         data = self.data()
@@ -1177,6 +1331,11 @@ class FinanceService:
         for expense in filtered_expenses:
             category = str(expense.get("description", "-")).strip() or "-"
             categories[category] = categories.get(category, 0.0) + float(expense.get("amount", 0.0))
+        expenses_by_plan = {
+            str(expense.get("recurring_plan_id")): expense
+            for expense in expenses
+            if expense.get("recurring_plan_id") and expense.get("recurring_month") == month
+        }
 
         return {
             "version": APP_VERSION,
@@ -1192,7 +1351,30 @@ class FinanceService:
             "is_month_closed": self.month_is_closed(month, data),
             "income_sources": data["settings"]["income_sources"],
             "recurring": data["recurring_payments"],
-            "selected_recurring": [item for item in data["recurring_payments"] if item.get("account_id") == selected],
+            "selected_recurring": [
+                {
+                    **item,
+                    "current_expense_id": str(expenses_by_plan.get(str(item.get("id", "")), {}).get("id", "")),
+                    "current_amount": float(
+                        expenses_by_plan.get(str(item.get("id", "")), {}).get(
+                            "amount",
+                            recurring_amount_for_month(item, month),
+                        )
+                    ),
+                    "current_amount_label": format_money(
+                        float(
+                            expenses_by_plan.get(str(item.get("id", "")), {}).get(
+                                "amount",
+                                recurring_amount_for_month(item, month),
+                            )
+                        ),
+                        currency,
+                    ),
+                }
+                for item in data["recurring_payments"]
+                if item.get("account_id") == selected
+                and is_recurring_due_in_month(item, month, self.visible_month(data))
+            ],
             "incomes": incomes,
             "expenses": expenses,
             "summary": {

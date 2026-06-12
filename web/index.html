@@ -16,6 +16,7 @@
         <nav class="nav">
           <button class="nav-button active" data-page="start" title="Start"><span>⌂</span><strong>Start</strong></button>
           <button class="nav-button" data-page="accounts" title="Konten"><span>▦</span><strong>Konten</strong></button>
+          <button class="nav-button" data-page="payments" title="Alle Zahlungen"><span>≡</span><strong>Alle Zahlungen</strong></button>
           <button class="nav-button" data-page="analysis" title="Analyse"><span>◌</span><strong>Analyse</strong></button>
           <button class="nav-button" data-page="settings" title="Einstellungen"><span>⚙</span><strong>Einstellungen</strong></button>
         </nav>
@@ -32,6 +33,7 @@
 
         <section id="page-start" class="page active"></section>
         <section id="page-accounts" class="page"></section>
+        <section id="page-payments" class="page"></section>
         <section id="page-analysis" class="page"></section>
         <section id="page-settings" class="page"></section>
       </main>
@@ -44,8 +46,8 @@
         <div class="subtitle">Diese Einträge liegen in der Vergangenheit und sind noch nicht als erledigt markiert.</div>
         <div id="reminder-modal-list" class="list" style="margin-top:12px"></div>
         <div class="actions">
-          <button id="reminder-open-accounts" class="solid" type="button">Programm öffnen</button>
-          <button class="ghost" value="cancel" type="submit">Später erinnern</button>
+          <button id="reminder-open-accounts" class="solid" type="button">Erstes Konto öffnen</button>
+          <button id="reminder-snooze" class="ghost" value="cancel" type="button">Später erinnern</button>
         </div>
       </form>
     </dialog>
