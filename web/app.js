@@ -12,7 +12,9 @@ const state = {
   lastReminderSignature: "",
   lastReminderDay: "",
   lastReminderShownAt: 0,
-  toastTimer: null
+  toastTimer: null,
+  activeDropdownOverlay: null,
+  activeDropdownCombo: null
 };
 
 const REMINDER_SHOWN_DATE_KEY = "jarvis-buchhaltung-reminder-shown-date";
@@ -30,17 +32,31 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function getDropdownOverlay() {
+function getDropdownOverlay(combo = null) {
+  if (combo) {
+    const dialog = combo.closest("dialog");
+    if (dialog) {
+      let overlay = $(".dropdown-overlay[data-dropdown-overlay='dialog']", dialog);
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.className = "dropdown-overlay";
+        overlay.dataset.dropdownOverlay = "dialog";
+        dialog.appendChild(overlay);
+      }
+      return overlay;
+    }
+  }
   return $("#dropdown-overlay");
 }
 
 function closeSelectMenu() {
-  const overlay = getDropdownOverlay();
+  const overlay = state.activeDropdownOverlay || getDropdownOverlay();
   if (overlay) {
     overlay.hidden = true;
     overlay.innerHTML = "";
-    delete overlay._activeCombo;
   }
+  state.activeDropdownOverlay = null;
+  state.activeDropdownCombo = null;
   $$(".select-trigger[aria-expanded='true']").forEach((trigger) => {
     trigger.setAttribute("aria-expanded", "false");
   });
@@ -79,7 +95,7 @@ function positionSelectMenu(combo, menu) {
 }
 
 function openSelectMenu(combo) {
-  const overlay = getDropdownOverlay();
+  const overlay = getDropdownOverlay(combo);
   if (!overlay || !combo) return;
   const trigger = $(".select-trigger", combo);
   const selectedValue = $("input[type='hidden']", combo)?.value || "";
@@ -103,7 +119,8 @@ function openSelectMenu(combo) {
   overlay.innerHTML = "";
   overlay.hidden = false;
   overlay.append(menu);
-  overlay._activeCombo = combo;
+  state.activeDropdownOverlay = overlay;
+  state.activeDropdownCombo = combo;
   positionSelectMenu(combo, menu);
   trigger?.setAttribute("aria-expanded", "true");
 }
@@ -971,8 +988,7 @@ async function openReminderAccount(accountId) {
 document.addEventListener("click", async (event) => {
   const comboOption = event.target.closest("[data-select-option]");
   if (comboOption) {
-    const overlay = getDropdownOverlay();
-    const combo = overlay?._activeCombo || null;
+    const combo = state.activeDropdownCombo || null;
     if (combo) {
       setSelectValue(combo, comboOption.dataset.value || "", comboOption.dataset.label || "");
       closeSelectMenu();
