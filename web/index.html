@@ -14,16 +14,18 @@
           <div class="brand-subtitle">Privatbuchhaltung</div>
         </div>
         <nav class="nav">
-          <button class="nav-button active" data-page="start" title="Start"><span>⌂</span><strong>Start</strong></button>
-          <button class="nav-button" data-page="accounts" title="Konten"><span>▦</span><strong>Konten</strong></button>
-          <button class="nav-button" data-page="payments" title="Alle Zahlungen"><span>≡</span><strong>Alle Zahlungen</strong></button>
-          <button class="nav-button" data-page="analysis" title="Analyse"><span>◌</span><strong>Analyse</strong></button>
+          <button class="nav-button active" data-page="dashboard" title="Dashboard"><span>⌂</span><strong>Dashboard</strong></button>
+          <button class="nav-button" data-page="payment-plan" title="Zahlungsplan"><span>▤</span><strong>Zahlungsplan</strong></button>
+          <button class="nav-button" data-page="expenses" title="Ausgaben"><span>−</span><strong>Ausgaben</strong></button>
+          <button class="nav-button" data-page="bookings" title="Buchungen"><span>≡</span><strong>Buchungen</strong></button>
+          <button class="nav-button" data-page="analysis" title="Auswertung"><span>◌</span><strong>Auswertung</strong></button>
+          <button class="nav-button" data-page="month-close" title="Arbeitsmonat"><span>↔</span><strong>Arbeitsmonat</strong></button>
           <button class="nav-button" data-page="settings" title="Einstellungen"><span>⚙</span><strong>Einstellungen</strong></button>
         </nav>
         <div class="sidebar-spacer"></div>
         <div class="live-hint">
-          <div>Live-Hinweis</div>
-          <strong>Mint = positiver Cashflow</strong>
+          <div>Arbeitsmonat</div>
+          <strong id="sidebar-month">-</strong>
         </div>
       </aside>
 
@@ -31,10 +33,12 @@
         <div id="toast" class="toast" hidden></div>
         <section id="reminder" class="reminder" hidden></section>
 
-        <section id="page-start" class="page active"></section>
-        <section id="page-accounts" class="page"></section>
-        <section id="page-payments" class="page"></section>
+        <section id="page-dashboard" class="page active"></section>
+        <section id="page-payment-plan" class="page"></section>
+        <section id="page-expenses" class="page"></section>
+        <section id="page-bookings" class="page"></section>
         <section id="page-analysis" class="page"></section>
+        <section id="page-month-close" class="page"></section>
         <section id="page-settings" class="page"></section>
       </main>
     </div>
@@ -68,6 +72,7 @@
       </form>
     </dialog>
     <div id="dropdown-overlay" class="dropdown-overlay" hidden></div>
+    <div id="calendar-overlay" class="calendar-overlay" hidden></div>
     <script src="app.js"></script>
   </body>
 </html>

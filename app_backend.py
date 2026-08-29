@@ -150,7 +150,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             return {"overdue": service.collect_overdue_items()}
 
         if method == "POST" and path == "/api/accounts":
-            service.add_account(str(payload.get("name", "")))
+            service.add_account(str(payload.get("name", "")), str(payload.get("color", "")))
+            return self.state_after(payload)
+        if method == "PUT" and len(parts) == 3 and parts[:2] == ["api", "accounts"]:
+            service.update_account(parts[2], payload)
             return self.state_after(payload)
         if method == "DELETE" and len(parts) == 3 and parts[:2] == ["api", "accounts"]:
             service.delete_account(parts[2])
@@ -190,6 +193,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self.state_after(payload)
         if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "recurring"] and parts[3] == "skip":
             service.skip_recurring_month(parts[2], str(payload.get("month", "")))
+            return self.state_after(payload)
+        if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "recurring"] and parts[3] == "postpone":
+            service.postpone_recurring_month(parts[2], str(payload.get("month", "")))
             return self.state_after(payload)
 
         if method == "POST" and path == "/api/settings":
