@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Finanz Cockpit
+Comment=Privates Finanz Cockpit mit Konten, Dauerzahlungen und Analysen
+Exec=finanz-cockpit
+Terminal=false
+Icon=/opt/finanz-cockpit/assets/icons/finanz-cockpit.png
+StartupWMClass=com.finanz.cockpit
+Categories=Office;Finance;

@@ -137,15 +137,15 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 
-APP_NAME = "JarvisBuchhaltung"
+APP_NAME = "FinanzCockpit"
 IS_WINDOWS = os.name == "nt"
 PROJECT_DIR = Path(__file__).parent
-APP_ICON_NAME = "jarvis-buchhaltung"
+APP_ICON_NAME = "finanz-cockpit"
 LEGACY_DATA_PATH = PROJECT_DIR / "data.json"
 LEGACY_DB_PATH = PROJECT_DIR / "buchhaltung.db"
 VERSION_FILE_PATH = PROJECT_DIR / "version.json"
-GITHUB_REPO_URL = "https://github.com/JARVIS-ai-code/buchhaltung"
-GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/JARVIS-ai-code/buchhaltung/releases/latest"
+GITHUB_REPO_URL = "https://github.com/JARVIS-ai-code/finanz-cockpit"
+GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/JARVIS-ai-code/finanz-cockpit/releases/latest"
 
 
 def app_data_dir() -> Path:
@@ -162,7 +162,7 @@ def app_data_dir() -> Path:
 
 DATA_DIR = app_data_dir()
 DATA_PATH = DATA_DIR / "data.json"
-DB_PATH = DATA_DIR / "buchhaltung.db"
+DB_PATH = DATA_DIR / "finanz-cockpit.db"
 
 
 def load_app_version() -> str:
@@ -415,7 +415,7 @@ MainWindowBase = Gtk.ApplicationWindow if IS_WINDOWS else Adw.ApplicationWindow
 class FinanceAppWindow(MainWindowBase):
     def __init__(self, app: Adw.Application, launched_from_autostart: bool = False) -> None:
         super().__init__(application=app)
-        self.set_title("JARVIS Buchhaltungssystem")
+        self.set_title("Finanz Cockpit")
         self.set_icon_name(APP_ICON_NAME)
         self.set_default_size(1280, 820)
         self.set_resizable(True)
@@ -1277,7 +1277,7 @@ class FinanceAppWindow(MainWindowBase):
             header = Gtk.HeaderBar()
             header.set_show_title_buttons(True)
             header.set_decoration_layout("minimize,maximize,close")
-            title_label = Gtk.Label(label="JARVIS Buchhaltungssystem")
+            title_label = Gtk.Label(label="Finanz Cockpit")
             title_label.add_css_class("title-sm")
             header.set_title_widget(title_label)
             self.set_titlebar(header)
@@ -3587,7 +3587,7 @@ class FinanceAppWindow(MainWindowBase):
 
     def configure_linux_autostart(self, enabled: bool) -> None:
         autostart_dir = Path.home() / ".config" / "autostart"
-        desktop_file = autostart_dir / "jarvis-buchhaltung.desktop"
+        desktop_file = autostart_dir / "finanz-cockpit.desktop"
         if not enabled:
             if desktop_file.exists():
                 try:
@@ -3604,7 +3604,7 @@ class FinanceAppWindow(MainWindowBase):
                 [
                     "[Desktop Entry]",
                     "Type=Application",
-                    "Name=Jarvis Buchhaltung",
+                    "Name=Finanz Cockpit",
                     "Comment=Startet Erinnerungen für überfällige Zahlungen",
                     f"Exec={exec_line}",
                     "Terminal=false",
@@ -3620,7 +3620,7 @@ class FinanceAppWindow(MainWindowBase):
         if not appdata:
             return
         startup_dir = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-        startup_file = startup_dir / "jarvis_buchhaltung_autostart.bat"
+        startup_file = startup_dir / "finanz_cockpit_autostart.bat"
 
         if not enabled:
             if startup_file.exists():
@@ -3690,7 +3690,7 @@ class FinanceAppWindow(MainWindowBase):
                 GITHUB_LATEST_RELEASE_API,
                 headers={
                     "Accept": "application/vnd.github+json",
-                    "User-Agent": "jarvis-buchhaltung-update-checker",
+                    "User-Agent": "finanz-cockpit-update-checker",
                 },
                 method="GET",
             )
@@ -3911,7 +3911,7 @@ class FinanceAppWindow(MainWindowBase):
 
             request = urllib.request.Request(
                 self.update_popup_asset_url,
-                headers={"User-Agent": "jarvis-buchhaltung-updater"},
+                headers={"User-Agent": "finanz-cockpit-updater"},
                 method="GET",
             )
             with urllib.request.urlopen(request, timeout=30) as response:
@@ -4053,8 +4053,8 @@ class FinanceAppWindow(MainWindowBase):
                     subprocess.Popen([sys.executable, str(PROJECT_DIR / "app.py")], close_fds=True)
                 return
 
-            if shutil.which("jarvis-buchhaltung"):
-                subprocess.Popen(["jarvis-buchhaltung"], start_new_session=True)
+            if shutil.which("finanz-cockpit"):
+                subprocess.Popen(["finanz-cockpit"], start_new_session=True)
             else:
                 subprocess.Popen([sys.executable, str(PROJECT_DIR / "app.py")], start_new_session=True)
         except OSError:
@@ -4328,7 +4328,7 @@ class FinanceAppWindow(MainWindowBase):
 class FinanceApp(Adw.Application):
     def __init__(self, launched_from_autostart: bool = False, start_visible: bool = False) -> None:
         super().__init__(
-            application_id="com.jarvis.buchhaltung",
+            application_id="com.finanz.cockpit",
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
         )
         self.launched_from_autostart = launched_from_autostart

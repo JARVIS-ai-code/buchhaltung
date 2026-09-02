@@ -20,10 +20,11 @@ const state = {
   activeDateViewMonth: ""
 };
 
-const REMINDER_SHOWN_DATE_KEY = "jarvis-buchhaltung-reminder-shown-date";
-const REMINDER_SNOOZED_DATE_KEY = "jarvis-buchhaltung-reminder-snoozed-date";
+const REMINDER_SHOWN_DATE_KEY = "finanz-cockpit-reminder-shown-date";
+const REMINDER_SNOOZED_DATE_KEY = "finanz-cockpit-reminder-snoozed-date";
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-const MONTH_LABELS = ["Januar", "Februar", "Maerz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+const MONTH_LABELS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+const ACCOUNT_COLOR_PRESETS = ["#38a1ff", "#35d59b", "#ffc857", "#ff7ac8", "#7c5cff", "#2ee9d3", "#ff5f7a", "#a3e635"];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -65,19 +66,21 @@ function colorControl(value, attrs = "", name = "") {
   const nameAttr = name ? `name="${escapeHtml(name)}"` : "";
   return `
     <span class="color-control" style="--picker-color: ${escapeHtml(color)}">
-      <span class="color-swatch"></span>
-      <span class="color-value">${escapeHtml(color.toUpperCase())}</span>
-      <input type="color" ${nameAttr} value="${escapeHtml(color)}" ${attrs}>
+      <input type="hidden" data-color-input ${nameAttr} value="${escapeHtml(color)}" ${attrs}>
+      <button class="color-control-trigger" type="button" data-action="open-color-picker" aria-label="Farbe auswählen">
+        <span class="color-swatch"></span>
+        <span class="color-value">${escapeHtml(color.toUpperCase())}</span>
+      </button>
     </span>
   `;
 }
 
 function colorPickerField(label, name, value, attrs = "") {
   return `
-    <label class="field color-picker-field">
+    <div class="field color-picker-field">
       <span>${escapeHtml(label)}</span>
       ${colorControl(value, attrs, name)}
-    </label>
+    </div>
   `;
 }
 
@@ -93,6 +96,46 @@ function syncColorControl(input) {
   if (accountRow && input.dataset.accountColor) {
     accountRow.style.setProperty("--account-color", color);
   }
+}
+
+function setColorPickerValue(modal, value) {
+  if (!modal || !/^#[0-9a-fA-F]{6}$/.test(String(value || "").trim())) return;
+  const color = String(value).trim().toLowerCase();
+  const input = $("[data-color-picker-input]", modal);
+  const preview = $("[data-color-picker-preview]", modal);
+  if (input) input.value = color.toUpperCase();
+  if (preview) preview.style.setProperty("--picker-color", color);
+  $$('[data-color-choice]', modal).forEach((button) => {
+    button.classList.toggle("active", button.dataset.colorChoice?.toLowerCase() === color);
+  });
+}
+
+function openColorPicker(control) {
+  const input = $("[data-color-input]", control);
+  if (!input) return;
+  const currentColor = normalizeColor(input.value);
+  const palette = ACCOUNT_COLOR_PRESETS.map((color) => `
+    <button class="color-choice ${color === currentColor ? "active" : ""}" type="button" data-color-choice="${color}" style="--picker-color: ${color}" aria-label="${color.toUpperCase()}"></button>
+  `).join("");
+
+  openModal("Kontofarbe", `
+    <div class="color-picker-dialog">
+      <div class="color-picker-preview" data-color-picker-preview style="--picker-color: ${currentColor}"></div>
+      <div class="color-choice-grid">${palette}</div>
+      ${field("Hex-Farbwert", "color", currentColor.toUpperCase(), 'data-color-picker-input autocomplete="off" spellcheck="false"')}
+    </div>
+  `, async (payload) => {
+    const color = String(payload.color || "").trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+      throw new Error("Bitte einen gültigen Hex-Farbwert eingeben.");
+    }
+    input.value = color.toLowerCase();
+    syncColorControl(input);
+    if (input.dataset.accountColor) {
+      await api(`/api/accounts/${input.dataset.accountColor}`, { method: "PUT", body: postContext({ color: input.value }) });
+      showToast("Kontofarbe aktualisiert.");
+    }
+  });
 }
 
 function parseDateText(value) {
@@ -530,7 +573,10 @@ function monthFromTextDate(value) {
 function monthLabel(month) {
   const parts = String(month || "").split("-");
   if (parts.length !== 2) return String(month || "");
-  return `${parts[1]}-${parts[0]}`;
+  const year = Number(parts[0]);
+  const monthNum = Number(parts[1]);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) return String(month || "");
+  return `${MONTH_LABELS[monthNum - 1]} ${year} (${String(monthNum).padStart(2, "0")}-${year})`;
 }
 
 function monthIndex(month) {
@@ -619,7 +665,6 @@ function setUpdateProgressModal(task) {
   const percent = $("#update-progress-percent");
   const bytes = $("#update-progress-bytes");
   const speed = $("#update-progress-speed");
-  const restartButton = $("#update-restart-button");
 
   const downloaded = Math.max(0, Number(task?.downloaded_bytes || 0));
   const total = Math.max(0, Number(task?.total_bytes || 0));
@@ -638,7 +683,6 @@ function setUpdateProgressModal(task) {
     bytes.textContent = `${formatBytes(downloaded)} / unbekannt`;
   }
   speed.textContent = formatSpeed(task?.speed_bps || 0);
-  restartButton.hidden = !Boolean(task?.restart_required && task?.status === "completed");
 }
 
 function stopUpdatePolling() {
@@ -659,7 +703,10 @@ async function pollUpdateProgress() {
 
   if (task.status === "completed") {
     if (task.restart_required) {
-      showToast("Update fertig. Bitte Programm neu starten.");
+      const modal = $("#update-progress-modal");
+      if (modal?.open) modal.close();
+      showToast("Update abgeschlossen. Programm wird neu gestartet.");
+      await api("/api/app/restart", { method: "POST", body: {} });
     } else {
       showToast("Update gestartet.");
     }
@@ -795,6 +842,18 @@ function accountOptions(selected = "") {
   }));
 }
 
+function lockedEntryContent(content, setup = null) {
+  if (!setup) return content;
+  return `
+    <div class="entry-setup">
+      <div class="entry-setup-content" inert aria-hidden="true">${content}</div>
+      <div class="entry-setup-overlay">
+        <button class="solid" type="button" data-action="${setup.action}">${setup.label}</button>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   if (!state.data) return;
   closeSelectMenu();
@@ -922,14 +981,14 @@ function renderDashboard() {
       ${kpiCard("Ausgaben", d.summary.expense_label, "negative", 3)}
       ${kpiCard("Übrig", d.summary.remaining_label, moneyClass(d.summary.remaining), 3)}
       ${kpiCard("Offen", d.summary.open_total_label, "warn-text", 3)}
-      ${card("Arbeitsmonat", "Ausgewählte Monatsdaten werden im Programm angezeigt", monthNavigatorContent(d), 12)}
+      ${card("Ausgewählter Monat", "Monat, für den du deine Finanzen ansiehst", monthNavigatorContent(d), 12)}
       ${card("Offene Zahlungen", "Noch nicht erledigte Dauerzahlungen", `
         <div class="list compact-list">
           ${(d.open_amounts || []).map((item) => `
             <div class="row clickable-row" role="button" tabindex="0" data-action="open-account-payments" data-id="${escapeHtml(item.account_id)}">
               <div>
                 <div class="row-title">${escapeHtml(item.account)}</div>
-                <div class="row-sub">Aktueller Arbeitsmonat | Konto öffnen</div>
+                <div class="row-sub">Ausgewählter Monat | Konto öffnen</div>
               </div>
               <strong>${escapeHtml(item.amount_label)}</strong>
             </div>
@@ -994,7 +1053,7 @@ function monthNavigatorContent(d) {
     <div class="month-navigator">
       <button class="ghost" data-action="change-month" data-month="${escapeHtml(previousMonth)}">Zurück zu ${escapeHtml(monthLabel(previousMonth))}</button>
       <div class="month-current">
-        <div>Aktueller Arbeitsmonat</div>
+        <div>Ausgewählter Monat</div>
         <strong>${escapeHtml(d.visible_month_label)}</strong>
       </div>
       <button class="solid" data-action="change-month" data-month="${escapeHtml(nextMonth)}">${escapeHtml(nextButtonLabel)}</button>
@@ -1010,6 +1069,33 @@ function monthNavigatorContent(d) {
 function renderBookings() {
   const d = state.data;
   const recurring = recurringManagementRows();
+  const incomeSources = d.income_sources || [];
+  const accounts = d.accounts || [];
+  const incomeForm = `
+    <form id="income-form" class="form-grid">
+      ${selectField("Typ", "type", incomeSources)}
+      ${selectField("Konto", "account_id", accountOptions())}
+      ${field("Beschreibung", "description", "", "required")}
+      ${field("Betrag", "amount", "", "inputmode=\"decimal\" required")}
+      ${datePickerField("Datum", "date", defaultMonthDate())}
+      <div class="actions"><button class="solid" type="submit">Einnahme speichern</button></div>
+    </form>
+  `;
+  const expenseForm = `
+    <form id="expense-form" class="form-grid">
+      ${selectField("Konto", "account_id", accountOptions())}
+      ${field("Kategorie / Beschreibung", "description", "", "required")}
+      ${field("Betrag", "amount", "", "inputmode=\"decimal\" required")}
+      ${datePickerField("Datum", "date", defaultMonthDate())}
+      <div class="actions"><button class="solid" type="submit">Ausgabe speichern</button></div>
+    </form>
+  `;
+  const accountSetup = { action: "open-account-settings", label: "Jetzt Konto hinterlegen" };
+  const incomeSetup = !accounts.length
+    ? accountSetup
+    : !incomeSources.length
+      ? { action: "open-income-source-settings", label: "Jetzt Einnahmequelle hinterlegen" }
+      : null;
   $("#page-bookings").innerHTML = `
     <div class="page-title">
       <div>
@@ -1018,25 +1104,8 @@ function renderBookings() {
       </div>
     </div>
     <div class="grid">
-      ${card("Einnahme erfassen", "Lohn, Spesen oder eigene Quelle", `
-        <form id="income-form" class="form-grid">
-          ${selectField("Typ", "type", d.income_sources || [])}
-          ${selectField("Konto", "account_id", accountOptions())}
-          ${field("Beschreibung", "description", "", "required")}
-      ${field("Betrag", "amount", "", "inputmode=\"decimal\" required")}
-      ${datePickerField("Datum", "date", defaultMonthDate())}
-      <div class="actions"><button class="solid" type="submit">Einnahme speichern</button></div>
-    </form>
-  `, 6)}
-      ${card("Ausgabe erfassen", "Kategorie oder Beschreibung", `
-        <form id="expense-form" class="form-grid">
-          ${selectField("Konto", "account_id", accountOptions())}
-      ${field("Kategorie / Beschreibung", "description", "", "required")}
-      ${field("Betrag", "amount", "", "inputmode=\"decimal\" required")}
-      ${datePickerField("Datum", "date", defaultMonthDate())}
-      <div class="actions"><button class="solid" type="submit">Ausgabe speichern</button></div>
-    </form>
-  `, 6)}
+      ${card("Einnahme erfassen", "Lohn, Spesen oder eigene Quelle", lockedEntryContent(incomeForm, incomeSetup), 6)}
+      ${card("Ausgabe erfassen", "Kategorie oder Beschreibung", lockedEntryContent(expenseForm, accounts.length ? null : accountSetup), 6)}
       ${card("Wiederkehrende Zahlungen", `${recurring.length} aktive Zahlung(en)`, `
         <div class="actions">
           <button class="solid" data-action="new-recurring">Dauerzahlung hinzufügen</button>
@@ -1181,12 +1250,12 @@ function renderExpenses() {
       ${groups.map((group) => {
         const sorted = [...group.items].sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)
           || String(a.description || "").localeCompare(String(b.description || ""), "de"));
-        return card(group.account.name, `${formatAmount(group.total)} im Arbeitsmonat`, `
+        return card(group.account.name, `${formatAmount(group.total)} im ausgewählten Monat`, `
           <div class="list compact-list">
             ${sorted.map(manualExpenseRow).join("")}
           </div>
         `, 6);
-      }).join("") || card("Keine manuellen Ausgaben", "In diesem Arbeitsmonat wurde noch keine manuelle Ausgabe erfasst.", `
+      }).join("") || card("Keine manuellen Ausgaben", "In diesem Monat wurde noch keine manuelle Ausgabe erfasst.", `
         <div class="empty">Noch keine Einträge vorhanden.</div>
       `, 12)}
     </div>
@@ -1292,12 +1361,12 @@ function renderMonthClose() {
   $("#page-month-close").innerHTML = `
     <div class="page-title">
       <div>
-        <h1>Arbeitsmonat</h1>
+        <h1>Monatsübersicht</h1>
         <p>Zwischen Monaten wechseln und neue Monate starten</p>
       </div>
     </div>
     <div class="grid">
-      ${card("Arbeitsmonat", "Ausgewählte Monatsdaten werden im Programm angezeigt", monthNavigatorContent(d), 12)}
+      ${card("Ausgewählter Monat", "Monat, für den du deine Finanzen ansiehst", monthNavigatorContent(d), 12)}
     </div>
   `;
 }
@@ -1315,6 +1384,8 @@ function formatAmount(value) {
 
 function renderSettings() {
   const d = state.data;
+  const autostartEnabled = Boolean(d.settings.autostart_enabled);
+  const autostartStartHidden = autostartEnabled && Boolean(d.settings.autostart_start_hidden);
   $("#page-settings").innerHTML = `
     <div class="page-title">
       <div>
@@ -1327,8 +1398,8 @@ function renderSettings() {
         <form id="settings-form" class="form-grid settings-form">
           ${field("Währung", "currency", d.settings.currency || "EUR")}
           ${field("Update-Prüfung alle Stunden", "update_check_interval_hours", d.settings.update_check_interval_hours || 6, "type=\"number\" min=\"1\" max=\"168\"")}
-          <label class="check-pill"><input type="checkbox" name="autostart_enabled" ${d.settings.autostart_enabled ? "checked" : ""}>Autostart aktivieren</label>
-          <label class="check-pill"><input type="checkbox" name="autostart_open_window" ${d.settings.autostart_open_window ? "checked" : ""}>Beim Systemstart Fenster öffnen</label>
+          <label class="check-pill"><input type="checkbox" name="autostart_enabled" ${autostartEnabled ? "checked" : ""}>Autostart aktivieren</label>
+          <label class="check-pill ${autostartEnabled ? "" : "is-disabled"}" data-autostart-hidden-pill><input type="checkbox" name="autostart_start_hidden" ${autostartStartHidden ? "checked" : ""} ${autostartEnabled ? "" : "disabled"}>Im Hintergrund starten</label>
           <label class="check-pill"><input type="checkbox" name="auto_update_check" ${d.settings.auto_update_check ? "checked" : ""}>Periodisch auf Updates prüfen</label>
           <div class="actions">
             <button class="solid" type="submit">Einstellungen speichern</button>
@@ -1351,10 +1422,9 @@ function renderSettings() {
                 <div class="row-title">${escapeHtml(account.name)}</div>
               </div>
               <div class="account-row-controls">
-                <label class="account-color-field" title="Kontofarbe">
+                <div class="account-color-field" title="Kontofarbe">
                   ${colorControl(account.color || accountColor(account.id), `data-account-color="${escapeHtml(account.id)}" aria-label="Kontofarbe ${escapeHtml(account.name)}"`)}
-                </label>
-                <button class="ghost" data-action="save-account-color" data-id="${escapeHtml(account.id)}">Speichern</button>
+                </div>
                 <button class="danger-button" data-action="delete-account" data-id="${escapeHtml(account.id)}">Löschen</button>
               </div>
             </div>
@@ -1373,14 +1443,15 @@ function renderSettings() {
               <button class="ghost" data-action="rename-source" data-source="${escapeHtml(source)}">Speichern</button>
               <button class="danger-button" data-action="delete-source" data-source="${escapeHtml(source)}">Löschen</button>
             </div>
-          `).join("")}
+          `).join("") || `<p class="empty">Keine Einnahmequellen angelegt.</p>`}
         </div>
       `, 12)}
     </div>
   `;
+  bindAutostartControls($("#page-settings"));
   bindForm($("#page-settings"), "#settings-form", async (payload, form) => {
     payload.autostart_enabled = Boolean(form.elements.autostart_enabled.checked);
-    payload.autostart_open_window = Boolean(form.elements.autostart_open_window.checked);
+    payload.autostart_start_hidden = payload.autostart_enabled && Boolean(form.elements.autostart_start_hidden.checked);
     payload.auto_update_check = Boolean(form.elements.auto_update_check.checked);
     await api("/api/settings", { method: "POST", body: postContext(payload) });
     showToast("Einstellungen gespeichert.");
@@ -1395,6 +1466,22 @@ function renderSettings() {
     form.reset();
     showToast("Einnahmequelle hinzugefügt.");
   });
+}
+
+function bindAutostartControls(root) {
+  const form = $("#settings-form", root);
+  if (!form) return;
+  const autostartInput = form.elements.autostart_enabled;
+  const hiddenInput = form.elements.autostart_start_hidden;
+  const hiddenPill = $("[data-autostart-hidden-pill]", form);
+  const sync = () => {
+    const enabled = Boolean(autostartInput.checked);
+    hiddenInput.disabled = !enabled;
+    if (!enabled) hiddenInput.checked = false;
+    hiddenPill?.classList.toggle("is-disabled", !enabled);
+  };
+  autostartInput.addEventListener("change", sync);
+  sync();
 }
 
 function openModal(title, html, onSubmit) {
@@ -1502,8 +1589,30 @@ function recurringModal(rec = null, kind = "standard") {
   });
 }
 
+function openSettingsSetup(selector) {
+  state.page = "settings";
+  render();
+  window.setTimeout(() => {
+    const input = $(selector);
+    input?.scrollIntoView({ behavior: "smooth", block: "center" });
+    input?.focus();
+  }, 0);
+}
+
+function openAccountSettings() {
+  openSettingsSetup("#account-form input[name='name']");
+}
+
+function openIncomeSourceSettings() {
+  openSettingsSetup("#source-form input[name='name']");
+}
+
 function transactionModal(item, kind) {
   const isIncome = kind === "income";
+  if (isIncome && !(state.data.income_sources || []).length) {
+    openIncomeSourceSettings();
+    return;
+  }
   const html = `
     ${isIncome ? selectField("Typ", "type", state.data.income_sources || [], item.type) : ""}
     ${selectField("Konto", "account_id", accountOptions(item.account_id))}
@@ -1554,6 +1663,9 @@ async function openReminderAccount(accountId) {
 function openExpenseEntry() {
   state.page = "bookings";
   render();
+  if (!(state.data.accounts || []).length) {
+    return;
+  }
   window.setTimeout(() => {
     const form = $("#expense-form");
     form?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1581,6 +1693,12 @@ document.addEventListener("click", async (event) => {
   if (calendarToday && state.activeDateControl) {
     setDatePickerValue(state.activeDateControl, todayText());
     closeDatePicker();
+    return;
+  }
+
+  const colorChoice = event.target.closest("[data-color-choice]");
+  if (colorChoice) {
+    setColorPickerValue(colorChoice.closest("dialog"), colorChoice.dataset.colorChoice || "");
     return;
   }
 
@@ -1646,9 +1764,11 @@ document.addEventListener("click", async (event) => {
     } else if (action === "open-overdue-account") {
       await openReminderAccount(id);
     } else if (action === "new-recurring") {
-      recurringModal(null, "standard");
+      if ((state.data.accounts || []).length) recurringModal(null, "standard");
+      else openAccountSettings();
     } else if (action === "new-installment") {
-      recurringModal(null, "installment");
+      if ((state.data.accounts || []).length) recurringModal(null, "installment");
+      else openAccountSettings();
     } else if (action === "edit-recurring") {
       const rec = state.data.recurring.find((item) => item.id === id);
       if (rec) recurringModal(rec, rec.kind);
@@ -1703,15 +1823,15 @@ document.addEventListener("click", async (event) => {
         await api(`/api/accounts/${id}`, { method: "DELETE", body: postContext() });
         showToast("Konto gelöscht.");
       }
-    } else if (action === "save-account-color") {
-      const row = target.closest(".account-row");
-      const input = $("[data-account-color]", row);
-      if (!input) return;
-      await api(`/api/accounts/${id}`, { method: "PUT", body: postContext({ color: input.value }) });
-      showToast("Kontofarbe gespeichert.");
+    } else if (action === "open-color-picker") {
+      openColorPicker(target.closest(".color-control"));
     } else if (action === "change-month") {
       await api("/api/settings/visible-month", { method: "POST", body: postContext({ month: target.dataset.month }) });
-      showToast(`Arbeitsmonat ${monthLabel(target.dataset.month)} geladen.`);
+      showToast(`Monat ${monthLabel(target.dataset.month)} geladen.`);
+    } else if (action === "open-account-settings") {
+      openAccountSettings();
+    } else if (action === "open-income-source-settings") {
+      openIncomeSourceSettings();
     } else if (action === "rename-source") {
       const row = target.closest(".source-row");
       const input = $("input", row);
@@ -1767,18 +1887,18 @@ document.addEventListener("scroll", (event) => {
 
 document.addEventListener("input", (event) => {
   const target = event.target;
-  if (isEditableElement(target) || target.matches?.("input[type='color']")) {
+  if (isEditableElement(target)) {
     markDraftState(target);
   }
-  if (target.matches?.(".color-control input[type='color']")) {
-    syncColorControl(target);
+  if (target.matches?.("[data-color-picker-input]")) {
+    setColorPickerValue(target.closest("dialog"), target.value);
   }
 });
 
 document.addEventListener("reset", (event) => {
   window.setTimeout(() => {
     clearDraftState(event.target);
-    $$("input[type='color']", event.target).forEach(syncColorControl);
+    $$("[data-color-input]", event.target).forEach(syncColorControl);
     $$("[data-date-picker]", event.target).forEach((control) => {
       const input = $("input[type='hidden']", control);
       setDatePickerValue(control, input?.value || todayText(), false);
@@ -1788,7 +1908,7 @@ document.addEventListener("reset", (event) => {
 
 document.addEventListener("change", async (event) => {
   const target = event.target;
-  if (isEditableElement(target) || target.matches?.("input[type='color']")) {
+  if (isEditableElement(target)) {
     markDraftState(target);
   }
   if (target.dataset?.action !== "toggle-recurring") return;
@@ -1866,17 +1986,5 @@ if (updateProgressCloseBtn) {
   updateProgressCloseBtn.addEventListener("click", () => {
     const modal = $("#update-progress-modal");
     if (modal?.open) modal.close();
-  });
-}
-
-const updateRestartBtn = $("#update-restart-button");
-if (updateRestartBtn) {
-  updateRestartBtn.addEventListener("click", async () => {
-    try {
-      await api("/api/app/restart", { method: "POST", body: {} });
-      showToast("Programm wird neu gestartet…");
-    } catch (error) {
-      showToast(error.message);
-    }
   });
 }

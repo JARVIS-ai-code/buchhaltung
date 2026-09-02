@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu } = require("electron");
+const { app, BrowserWindow, dialog, Menu, Notification } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -7,6 +7,16 @@ let mainWindow = null;
 let backend = null;
 let backendUrl = "";
 let lastMidnightFocusDate = "";
+const launchedFromAutostart = process.argv.includes("--autostart");
+
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    focusMainWindow();
+  });
+}
 
 function pythonCandidates() {
   if (process.platform === "win32") {
@@ -19,7 +29,7 @@ function backendCommands() {
   const commonArgs = ["--host", "127.0.0.1", "--port", "0", "--quiet"];
 
   if (app.isPackaged) {
-    const exeName = process.platform === "win32" ? "JarvisBuchhaltungBackend.exe" : "JarvisBuchhaltungBackend";
+    const exeName = process.platform === "win32" ? "FinanzCockpitBackend.exe" : "FinanzCockpitBackend";
     const backendExe = path.join(process.resourcesPath, "backend", exeName);
     if (fs.existsSync(backendExe)) {
       return [
@@ -76,6 +86,9 @@ function startBackend() {
       const launch = commands[index++];
       backend = spawn(launch.command, launch.args, {
         cwd: launch.cwd,
+        env: app.isPackaged
+          ? { ...process.env, FINANZ_COCKPIT_APP_EXECUTABLE: process.execPath }
+          : process.env,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true
       });
@@ -167,6 +180,75 @@ function startMidnightReminderFocus() {
   }, 60 * 1000);
 }
 
+function paymentNotificationBody(items, dueField, extraLabel) {
+  const preview = items.slice(0, 3).map((item) => (
+    `${item.description || "Zahlung"} (${item.amount_label || ""}) - fällig ${item[dueField] || ""}`
+  ));
+  const remaining = items.length - preview.length;
+  if (remaining > 0) {
+    preview.push(`+ ${remaining} weitere ${extraLabel}`);
+  }
+  return preview.join("\n");
+}
+
+function todayDateLabel() {
+  const today = new Date();
+  return `${String(today.getDate()).padStart(2, "0")}-${String(today.getMonth() + 1).padStart(2, "0")}-${today.getFullYear()}`;
+}
+
+function showPaymentNotification(title, body) {
+  if (!Notification.isSupported()) return;
+  const notification = new Notification({
+    title,
+    body,
+    icon: path.join(__dirname, "..", "assets", "icons", "finanz-cockpit.png")
+  });
+  notification.on("click", focusMainWindow);
+  notification.show();
+}
+
+async function notifyOpenPaymentsOnLaunch() {
+  try {
+    const response = await fetch(`${backendUrl}/api/state`);
+    const payload = await response.json();
+    const state = payload?.state;
+    if (!state) return;
+
+    const overdue = Array.isArray(state.overdue) ? state.overdue : [];
+    const dueToday = (Array.isArray(state.next_due) ? state.next_due : [])
+      .filter((item) => item.due === todayDateLabel());
+
+    if (overdue.length > 0) {
+      showPaymentNotification(
+        `${overdue.length} überfällige Zahlung${overdue.length === 1 ? "" : "en"}`,
+        paymentNotificationBody(overdue, "due_date", "überfällige Zahlungen")
+      );
+    }
+    if (dueToday.length > 0) {
+      showPaymentNotification(
+        `${dueToday.length} heute fällige Zahlung${dueToday.length === 1 ? "" : "en"}`,
+        paymentNotificationBody(dueToday, "due", "heute fällige Zahlungen")
+      );
+    }
+  } catch (error) {
+    console.warn("Zahlungsbenachrichtigungen konnten nicht geladen werden:", error);
+  }
+}
+
+async function shouldShowWindowOnLaunch() {
+  if (!launchedFromAutostart) {
+    return true;
+  }
+  try {
+    const response = await fetch(`${backendUrl}/api/state`);
+    const payload = await response.json();
+    const settings = payload?.state?.settings || {};
+    return !settings.autostart_start_hidden;
+  } catch (_error) {
+    return true;
+  }
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1380,
@@ -174,9 +256,10 @@ async function createWindow() {
     minWidth: 1080,
     minHeight: 720,
     backgroundColor: "#121212",
-    title: "JARVIS Buchhaltungssystem",
+    title: "Finanz Cockpit",
+    show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, "..", "assets", "icons", "jarvis-buchhaltung.png"),
+    icon: path.join(__dirname, "..", "assets", "icons", "finanz-cockpit.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
@@ -187,18 +270,25 @@ async function createWindow() {
 
   try {
     backendUrl = await startBackend();
+    const showWindow = await shouldShowWindowOnLaunch();
     await mainWindow.loadURL(backendUrl);
-    focusMainWindow();
+    if (showWindow) {
+      focusMainWindow();
+    }
+    await notifyOpenPaymentsOnLaunch();
     startMidnightReminderFocus();
   } catch (error) {
-    dialog.showErrorBox("JARVIS Buchhaltung", error.message || String(error));
+    dialog.showErrorBox("Finanz Cockpit", error.message || String(error));
     app.quit();
   }
 }
 
 app.whenReady().then(() => {
+  app.setAppUserModelId("com.finanz.cockpit");
   Menu.setApplicationMenu(null);
-  createWindow();
+  if (singleInstanceLock) {
+    createWindow();
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -7,7 +7,7 @@ const { spawnSync } = require("child_process");
 const root = resolve(__dirname, "..");
 const distDir = join(root, "dist");
 const backendDistDir = join(distDir, "backend");
-const backendExe = join(backendDistDir, "JarvisBuchhaltungBackend.exe");
+const backendExe = join(backendDistDir, "FinanzCockpitBackend.exe");
 const versionJson = join(root, "version.json");
 
 function run(command, args, label) {
@@ -67,7 +67,7 @@ function main() {
     "--clean",
     "--onefile",
     "--name",
-    "JarvisBuchhaltungBackend",
+    "FinanzCockpitBackend",
     "--distpath",
     "dist/backend",
     "--workpath",

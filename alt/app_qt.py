@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-APP_NAME = "JarvisBuchhaltung"
+APP_NAME = "FinanzCockpit"
 PROJECT_DIR = Path(__file__).resolve().parent
 VERSION_FILE_PATH = PROJECT_DIR / "version.json"
 DEFAULT_INCOME_SOURCES = ["Lohn", "Nebentätigkeit", "Spesen"]
@@ -123,7 +123,7 @@ def app_data_dir() -> Path:
 
 
 DATA_DIR = app_data_dir()
-DB_PATH = DATA_DIR / "buchhaltung.db"
+DB_PATH = DATA_DIR / "finanz-cockpit.db"
 
 
 def load_app_version() -> str:
@@ -765,7 +765,7 @@ class RecurringDialog(QDialog):
 class FinanceWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("JARVIS Buchhaltungssystem")
+        self.setWindowTitle("Finanz Cockpit")
         self.resize(1360, 900)
 
         self.store = DataStore(DB_PATH)

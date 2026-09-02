@@ -12,14 +12,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from buchhaltung_core import APP_VERSION, FinanceService
-from buchhaltung_core.finance import FinanceError
+from finanz_cockpit_core import APP_VERSION, FinanceService
+from finanz_cockpit_core.finance import FinanceError
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
 
 def resolve_web_dir() -> Path:
-    env_override = os.environ.get("JARVIS_WEB_DIR", "").strip()
+    env_override = os.environ.get("FINANZ_COCKPIT_WEB_DIR", "").strip()
     if env_override:
         override = Path(env_override)
         if (override / "index.html").exists():
@@ -63,7 +63,7 @@ def schedule_process_exit(code: int = 77, delay_seconds: float = 0.25) -> None:
 
 class ApiHandler(BaseHTTPRequestHandler):
     service: FinanceService
-    server_version = "JarvisBuchhaltungBackend/1.0"
+    server_version = "FinanzCockpitBackend/1.0"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         if getattr(self.server, "quiet", False):
@@ -303,7 +303,7 @@ def make_server(host: str, port: int, quiet: bool) -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Jarvis Buchhaltung backend")
+    parser = argparse.ArgumentParser(description="Finanz Cockpit backend")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--quiet", action="store_true")

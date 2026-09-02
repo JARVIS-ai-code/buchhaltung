@@ -6,4 +6,4 @@ Dieser Ordner enthält die alte native Oberfläche und alte Verpackungsschritte,
 - `app_qt.py`: frühere Windows-PySide6-Oberfläche
 - `packaging/windows/`: früherer PySide6/PyInstaller/Inno-Setup-Build
 
-Die aktive App läuft jetzt über Electron (`electron/`, `web/`) mit Python/SQLite-Core (`buchhaltung_core/`, `app_backend.py`).
+Die aktive App läuft jetzt über Electron (`electron/`, `web/`) mit Python/SQLite-Core (`finanz_cockpit_core/`, `app_backend.py`).

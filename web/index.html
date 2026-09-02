@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>JARVIS Buchhaltungssystem</title>
+    <title>Finanz Cockpit</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -19,12 +19,12 @@
           <button class="nav-button" data-page="expenses" title="Ausgaben"><span>−</span><strong>Ausgaben</strong></button>
           <button class="nav-button" data-page="bookings" title="Buchungen"><span>≡</span><strong>Buchungen</strong></button>
           <button class="nav-button" data-page="analysis" title="Auswertung"><span>◌</span><strong>Auswertung</strong></button>
-          <button class="nav-button" data-page="month-close" title="Arbeitsmonat"><span>↔</span><strong>Arbeitsmonat</strong></button>
+          <button class="nav-button" data-page="month-close" title="Monatsübersicht"><span>↔</span><strong>Monatsübersicht</strong></button>
           <button class="nav-button" data-page="settings" title="Einstellungen"><span>⚙</span><strong>Einstellungen</strong></button>
         </nav>
         <div class="sidebar-spacer"></div>
         <div class="live-hint">
-          <div>Arbeitsmonat</div>
+          <div>Ausgewählter Monat</div>
           <strong id="sidebar-month">-</strong>
         </div>
       </aside>
@@ -66,7 +66,6 @@
           <span id="update-progress-speed">0 B/s</span>
         </div>
         <div class="actions">
-          <button id="update-restart-button" class="solid" type="button" hidden>Programm neu starten</button>
           <button id="update-progress-close" class="ghost" value="cancel" type="button">Im Hintergrund</button>
         </div>
       </form>

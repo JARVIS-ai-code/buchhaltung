@@ -470,6 +470,27 @@ select {
   grid-template-columns: 1fr;
 }
 
+.entry-setup {
+  position: relative;
+  min-height: 196px;
+}
+
+.entry-setup-content {
+  filter: blur(4px);
+  opacity: 0.42;
+  pointer-events: none;
+  user-select: none;
+}
+
+.entry-setup-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 15, 25, 0.22);
+}
+
 .settings-form {
   grid-template-columns: repeat(4, minmax(150px, 1fr));
   align-items: end;
@@ -986,7 +1007,7 @@ button:active {
 
 .account-row-controls {
   display: grid;
-  grid-template-columns: 140px auto auto;
+  grid-template-columns: 140px auto;
   gap: 8px;
   align-items: center;
 }
@@ -1003,13 +1024,7 @@ button:active {
 
 .color-control {
   position: relative;
-  display: grid;
-  grid-template-columns: 26px minmax(58px, 1fr);
-  gap: 8px;
-  align-items: center;
   width: 100%;
-  min-height: 38px;
-  padding: 6px 10px 6px 8px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--picker-color, var(--cyan)) 42%, rgba(255, 255, 255, 0.14));
   border-radius: var(--radius);
@@ -1019,7 +1034,6 @@ button:active {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 0 18px color-mix(in srgb, var(--picker-color, var(--cyan)) 18%, transparent);
-  cursor: pointer;
   transition:
     border-color 180ms var(--ease-out),
     box-shadow 180ms var(--ease-out),
@@ -1039,6 +1053,21 @@ button:active {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--picker-color, var(--cyan)) 18%, transparent),
     0 0 28px color-mix(in srgb, var(--picker-color, var(--cyan)) 34%, transparent);
+}
+
+.color-control-trigger {
+  display: grid;
+  grid-template-columns: 26px minmax(58px, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px 6px 8px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
 }
 
 .color-swatch {
@@ -1063,16 +1092,42 @@ button:active {
   white-space: nowrap;
 }
 
-.color-control input[type="color"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 100%;
+.color-picker-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.color-picker-preview {
+  min-height: 74px;
+  border: 1px solid color-mix(in srgb, var(--picker-color) 64%, rgba(255, 255, 255, 0.3));
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--picker-color) 82%, white), var(--picker-color)),
+    var(--picker-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 30px color-mix(in srgb, var(--picker-color) 34%, transparent);
+}
+
+.color-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.color-choice {
+  aspect-ratio: 1;
+  min-height: 32px;
   padding: 0;
-  border: 0;
-  opacity: 0;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: var(--picker-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
   cursor: pointer;
+}
+
+.color-choice:hover,
+.color-choice.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--picker-color) 36%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .row-title {
@@ -1133,6 +1188,11 @@ button:active {
   width: 18px;
   min-height: 18px;
   accent-color: var(--cyan);
+}
+
+.check-pill.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .month-navigator {

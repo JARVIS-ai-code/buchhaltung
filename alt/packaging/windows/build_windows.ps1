@@ -14,8 +14,8 @@ python -m PyInstaller `
   --noconfirm `
   --clean `
   --windowed `
-  --name JarvisBuchhaltung `
-  --icon "assets/icons/jarvis-buchhaltung.ico" `
+  --name FinanzCockpit `
+  --icon "assets/icons/finanz-cockpit.ico" `
   --add-data "version.json;." `
   --add-data "app_qt.py;." `
   --add-data "app_gtk.py;." `
@@ -27,5 +27,5 @@ if (!(Test-Path $Iscc)) {
   throw "ISCC.exe nicht gefunden. Bitte Inno Setup 6 installieren."
 }
 
-& $Iscc "/DMyAppVersion=$Version" "$Root\packaging\windows\jarvis-buchhaltung.iss"
+& $Iscc "/DMyAppVersion=$Version" "$Root\packaging\windows\finanz-cockpit.iss"
 Write-Host "Fertig. Installer liegt unter dist\windows."

@@ -18,21 +18,25 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-APP_NAME = "JarvisBuchhaltung"
+APP_NAME = "FinanzCockpit"
+LEGACY_APP_NAME = "JarvisBuchhaltung"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 VERSION_FILE_PATH = PROJECT_DIR / "version.json"
 LEGACY_DATA_PATH = PROJECT_DIR / "data.json"
 LEGACY_DB_PATH = PROJECT_DIR / "buchhaltung.db"
-APP_ICON_NAME = "jarvis-buchhaltung"
-GITHUB_REPO_URL = "https://github.com/JARVIS-ai-code/buchhaltung"
-GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/JARVIS-ai-code/buchhaltung/releases/latest"
+APP_ICON_NAME = "finanz-cockpit"
+GITHUB_REPO_URL = "https://github.com/JARVIS-ai-code/finanz-cockpit"
+GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/JARVIS-ai-code/finanz-cockpit/releases/latest"
 
-DEFAULT_INCOME_SOURCES = ["Lohn", "Nebentätigkeit", "Spesen"]
 RECURRING_FREQUENCY_OPTIONS = [
     ("Monatlich", "monthly"),
     ("Quartalszahlung", "quarterly"),
     ("Halbjährlich", "semiannual"),
     ("Jährlich", "yearly"),
+]
+MONTH_NAMES = [
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
 ]
 
 SCHEMA_SQL = """
@@ -92,10 +96,10 @@ CREATE INDEX IF NOT EXISTS idx_recurring_account ON recurring_payments(account_i
 DEFAULT_DATA = {
     "settings": {
         "currency": "EUR",
-        "income_sources": list(DEFAULT_INCOME_SOURCES),
+        "income_sources": [],
         "visible_month": "",
         "autostart_enabled": False,
-        "autostart_open_window": False,
+        "autostart_start_hidden": False,
         "reminder_interval_minutes": 15,
         "auto_update_check": True,
         "update_check_interval_hours": 6,
@@ -123,27 +127,30 @@ class FinanceError(ValueError):
     pass
 
 
-def app_data_dir() -> Path:
+def app_data_dir(app_name: str = APP_NAME) -> Path:
     if os.name == "nt":
         base = os.environ.get("APPDATA", "").strip() or os.environ.get("LOCALAPPDATA", "").strip()
         if base:
-            return Path(base) / APP_NAME
-        return Path.home() / "AppData" / "Roaming" / APP_NAME
+            return Path(base) / app_name
+        return Path.home() / "AppData" / "Roaming" / app_name
     xdg_data_home = os.environ.get("XDG_DATA_HOME", "").strip()
     if xdg_data_home:
-        return Path(xdg_data_home) / APP_NAME
-    return Path.home() / ".local" / "share" / APP_NAME
+        return Path(xdg_data_home) / app_name
+    return Path.home() / ".local" / "share" / app_name
 
 
 DATA_DIR = app_data_dir()
+LEGACY_INSTALLED_DATA_DIR = app_data_dir(LEGACY_APP_NAME)
 DATA_PATH = DATA_DIR / "data.json"
-DB_PATH = DATA_DIR / "buchhaltung.db"
+DB_PATH = DATA_DIR / "finanz-cockpit.db"
+LEGACY_INSTALLED_DB_PATH = LEGACY_INSTALLED_DATA_DIR / "buchhaltung.db"
+LEGACY_INSTALLED_DATA_PATH = LEGACY_INSTALLED_DATA_DIR / "data.json"
 
 
 def load_app_version() -> str:
     candidates: list[Path] = []
 
-    env_version_file = os.environ.get("JARVIS_VERSION_FILE", "").strip()
+    env_version_file = os.environ.get("FINANZ_COCKPIT_VERSION_FILE", "").strip()
     if env_version_file:
         candidates.append(Path(env_version_file))
 
@@ -249,7 +256,7 @@ def format_month_label(month: str) -> str:
             raise ValueError
     except (ValueError, TypeError):
         return str(month)
-    return f"{month_num:02d}-{year}"
+    return f"{MONTH_NAMES[month_num - 1]} {year} ({month_num:02d}-{year})"
 
 
 def month_shift(month: str, delta: int) -> str:
@@ -407,6 +414,7 @@ class FinanceService:
         if self.db_is_empty():
             self.import_legacy_json_if_available()
         self.ensure_defaults()
+        self.ensure_autostart_configuration()
 
     def connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -416,9 +424,15 @@ class FinanceService:
 
     def ensure_data_layout(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.db_path.exists() and LEGACY_DB_PATH.exists() and LEGACY_DB_PATH.resolve() != self.db_path.resolve():
+        if self.db_path.exists():
+            return
+
+        for source in (LEGACY_INSTALLED_DB_PATH, LEGACY_DB_PATH):
+            if not source.exists() or source.resolve() == self.db_path.resolve():
+                continue
             try:
-                self.db_path.write_bytes(LEGACY_DB_PATH.read_bytes())
+                self.db_path.write_bytes(source.read_bytes())
+                return
             except OSError:
                 pass
 
@@ -442,7 +456,14 @@ class FinanceService:
         return True
 
     def import_legacy_json_if_available(self) -> None:
-        source = LEGACY_DATA_PATH if LEGACY_DATA_PATH.exists() else DATA_PATH
+        source = next(
+            (
+                candidate
+                for candidate in (LEGACY_INSTALLED_DATA_PATH, LEGACY_DATA_PATH, DATA_PATH)
+                if candidate.exists()
+            ),
+            DATA_PATH,
+        )
         if not source.exists():
             return
         try:
@@ -465,8 +486,8 @@ class FinanceService:
                     try:
                         data["settings"][key] = json.loads(value)
                     except json.JSONDecodeError:
-                        data["settings"][key] = list(DEFAULT_INCOME_SOURCES)
-                elif key in ("autostart_enabled", "autostart_open_window", "auto_update_check"):
+                        data["settings"][key] = []
+                elif key in ("autostart_enabled", "autostart_start_hidden", "auto_update_check"):
                     data["settings"][key] = parse_bool(value, bool(DEFAULT_DATA["settings"].get(key)))
                 elif key in ("reminder_interval_minutes", "update_check_interval_hours"):
                     try:
@@ -590,8 +611,10 @@ class FinanceService:
         # Keep only supported setting keys; silently drop legacy keys from older app versions.
         data["settings"] = {key: data["settings"].get(key) for key in DEFAULT_DATA["settings"].keys()}
         data["settings"]["currency"] = str(data["settings"].get("currency", "EUR")).strip().upper() or "EUR"
-        for key, default in (("autostart_enabled", False), ("autostart_open_window", False), ("auto_update_check", True)):
+        for key, default in (("autostart_enabled", False), ("autostart_start_hidden", False), ("auto_update_check", True)):
             data["settings"][key] = parse_bool(data["settings"].get(key), default)
+        if not data["settings"]["autostart_enabled"]:
+            data["settings"]["autostart_start_hidden"] = False
         data["settings"]["reminder_interval_minutes"] = self.clamp_int(data["settings"].get("reminder_interval_minutes", 15), 1, 240, 15)
         data["settings"]["update_check_interval_hours"] = self.clamp_int(data["settings"].get("update_check_interval_hours", 6), 1, 168, 6)
         try:
@@ -642,15 +665,11 @@ class FinanceService:
 
     def clean_income_sources(self, sources: Any) -> list[str]:
         cleaned: list[str] = []
-        items = sources if isinstance(sources, list) else DEFAULT_INCOME_SOURCES
+        items = sources if isinstance(sources, list) else []
         for source in items:
             text = str(source).strip()
             if text and text.lower() not in [item.lower() for item in cleaned]:
                 cleaned.append(text)
-        if not cleaned:
-            cleaned = list(DEFAULT_INCOME_SOURCES)
-        if "spesen" not in [item.lower() for item in cleaned]:
-            cleaned.append("Spesen")
         return cleaned
 
     def clean_month_list(self, months: Any) -> list[str]:
@@ -766,7 +785,7 @@ class FinanceService:
                 "date": date_to_text(parsed),
             }
             if kind == "income":
-                base["type"] = str(item.get("type", "")).strip() or DEFAULT_INCOME_SOURCES[0]
+                base["type"] = str(item.get("type", "")).strip() or "Ohne Quelle"
             else:
                 base["source"] = item.get("source")
                 base["recurring_plan_id"] = item.get("recurring_plan_id")
@@ -908,7 +927,13 @@ class FinanceService:
     def validate_income_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         account_id = str(payload.get("account_id", "")).strip()
         description = str(payload.get("description", "")).strip()
-        income_type = str(payload.get("type", "")).strip() or DEFAULT_INCOME_SOURCES[0]
+        income_type = str(payload.get("type", "")).strip()
+        data = self.load_payload()
+        income_sources = self.clean_income_sources(data["settings"].get("income_sources"))
+        if not income_sources:
+            raise FinanceError("Bitte zuerst eine Einnahmequelle anlegen.")
+        if income_type.lower() not in [source.lower() for source in income_sources]:
+            raise FinanceError("Bitte eine gültige Einnahmequelle auswählen.")
         if not description:
             raise FinanceError("Beschreibung fehlt.")
         try:
@@ -918,7 +943,9 @@ class FinanceService:
             raise FinanceError("Bitte gültige Werte für Betrag und Datum eingeben.") from None
         if amount <= 0:
             raise FinanceError("Der Betrag muss größer als 0 sein.")
-        if account_id not in [item["id"] for item in self.load_payload()["accounts"]]:
+        if not data["accounts"]:
+            raise FinanceError("Bitte zuerst ein Konto anlegen.")
+        if account_id not in [item["id"] for item in data["accounts"]]:
             raise FinanceError("Bitte ein Konto auswählen.")
         return {
             "type": income_type,
@@ -940,7 +967,10 @@ class FinanceService:
             raise FinanceError("Bitte gültige Werte für Betrag und Datum eingeben.") from None
         if amount <= 0:
             raise FinanceError("Der Betrag muss größer als 0 sein.")
-        if account_id not in [item["id"] for item in self.load_payload()["accounts"]]:
+        data = self.load_payload()
+        if not data["accounts"]:
+            raise FinanceError("Bitte zuerst ein Konto anlegen.")
+        if account_id not in [item["id"] for item in data["accounts"]]:
             raise FinanceError("Bitte ein Konto auswählen.")
         return {
             "account_id": account_id,
@@ -1171,6 +1201,8 @@ class FinanceService:
 
     def validate_recurring_payload(self, payload: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         account_id = str(payload.get("account_id", "")).strip()
+        if not data["accounts"]:
+            raise FinanceError("Bitte zuerst ein Konto anlegen.")
         if account_id not in [item["id"] for item in data["accounts"]]:
             raise FinanceError("Bitte ein Konto auswählen.")
         description = str(payload.get("description", "")).strip()
@@ -1242,9 +1274,11 @@ class FinanceService:
         data = self.load_payload()
         if "currency" in payload:
             data["settings"]["currency"] = str(payload.get("currency") or "EUR").strip().upper()
-        for key in ("autostart_enabled", "autostart_open_window", "auto_update_check"):
+        for key in ("autostart_enabled", "autostart_start_hidden", "auto_update_check"):
             if key in payload:
                 data["settings"][key] = parse_bool(payload.get(key), False)
+        if not data["settings"]["autostart_enabled"]:
+            data["settings"]["autostart_start_hidden"] = False
         if "reminder_interval_minutes" in payload:
             data["settings"]["reminder_interval_minutes"] = self.clamp_int(payload.get("reminder_interval_minutes"), 1, 240, 15)
         if "update_check_interval_hours" in payload:
@@ -1334,8 +1368,6 @@ class FinanceService:
         remaining = [source for source in sources if source.lower() != text.lower()]
         if len(remaining) == len(sources):
             raise FinanceError("Einnahmequelle nicht gefunden.")
-        if not remaining:
-            raise FinanceError("Mindestens eine Einnahmequelle muss bleiben.")
         data["settings"]["income_sources"] = remaining
         self.save_payload(data)
 
@@ -1746,13 +1778,16 @@ class FinanceService:
             self.configure_linux_autostart(enabled)
 
     def autostart_command_parts(self) -> list[str]:
+        app_executable = os.environ.get("FINANZ_COCKPIT_APP_EXECUTABLE", "").strip()
+        if app_executable:
+            return [app_executable, "--autostart"]
         if getattr(sys, "frozen", False):
             return [str(Path(sys.executable).resolve()), "--autostart"]
         return [str(Path(sys.executable).resolve()), str(PROJECT_DIR / "app.py"), "--autostart"]
 
     def configure_linux_autostart(self, enabled: bool) -> None:
         autostart_dir = Path.home() / ".config" / "autostart"
-        desktop_file = autostart_dir / "jarvis-buchhaltung.desktop"
+        desktop_file = autostart_dir / "finanz-cockpit.desktop"
         if not enabled:
             if desktop_file.exists():
                 try:
@@ -1769,7 +1804,7 @@ class FinanceService:
                     [
                         "[Desktop Entry]",
                         "Type=Application",
-                        "Name=Jarvis Buchhaltung",
+                        "Name=Finanz Cockpit",
                         "Comment=Startet Erinnerungen für überfällige Zahlungen",
                         f"Exec={exec_line}",
                         "Terminal=false",
@@ -1783,36 +1818,79 @@ class FinanceService:
             pass
 
     def configure_windows_autostart(self, enabled: bool) -> None:
-        appdata = os.environ.get("APPDATA", "").strip()
-        if not appdata:
+        value_name = "Finanz Cockpit"
+        legacy_value_names = ("FinanzCockpit",)
+
+        try:
+            import winreg
+        except ImportError:
             return
-        startup_dir = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-        startup_file = startup_dir / "jarvis_buchhaltung_autostart.bat"
-        if not enabled:
-            if startup_file.exists():
+
+        appdata = os.environ.get("APPDATA", "").strip()
+        startup_file = None
+        legacy_startup_files: list[Path] = []
+        if appdata:
+            startup_dir = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+            startup_file = startup_dir / "finanz_cockpit_autostart.bat"
+            legacy_startup_files = [
+                startup_file,
+                startup_dir / "jarvis_buchhaltung_autostart.bat",
+            ]
+
+        run_key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+        def remove_startup_files() -> None:
+            for file_path in legacy_startup_files:
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                    except OSError:
+                        pass
+
+        def remove_registry_values(key: Any) -> None:
+            for name in (value_name, *legacy_value_names):
                 try:
-                    startup_file.unlink()
-                except OSError:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
                     pass
+
+        if not enabled:
+            remove_startup_files()
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key_path, 0, winreg.KEY_SET_VALUE) as key:
+                    remove_registry_values(key)
+            except OSError:
+                pass
             return
         try:
-            startup_dir.mkdir(parents=True, exist_ok=True)
             command_parts = self.autostart_command_parts()
             if not getattr(sys, "frozen", False) and len(command_parts) >= 2:
                 python_exec = Path(command_parts[0])
                 pythonw_exec = python_exec.with_name("pythonw.exe")
                 if pythonw_exec.exists():
                     command_parts[0] = str(pythonw_exec)
-            command_line = " ".join(f"\"{part}\"" for part in command_parts)
-            startup_file.write_text(f"@echo off\r\nstart \"\" {command_line}\r\n", encoding="utf-8")
+            command_line = subprocess.list2cmdline(command_parts)
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, run_key_path) as key:
+                remove_registry_values(key)
+                winreg.SetValueEx(key, value_name, 0, winreg.REG_SZ, command_line)
+            remove_startup_files()
         except OSError:
+            if startup_file is None:
+                return
+            try:
+                startup_file.parent.mkdir(parents=True, exist_ok=True)
+                command_line = " ".join(f"\"{part}\"" for part in self.autostart_command_parts())
+                startup_file.write_text(f"@echo off\r\nstart \"\" {command_line}\r\n", encoding="utf-8")
+            except OSError:
+                pass
+        except Exception:
             pass
 
     def check_update(self) -> dict[str, Any]:
         try:
             request = urllib.request.Request(
                 GITHUB_LATEST_RELEASE_API,
-                headers={"Accept": "application/vnd.github+json", "User-Agent": "jarvis-buchhaltung-update-checker"},
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "finanz-cockpit-update-checker"},
                 method="GET",
             )
             with urllib.request.urlopen(request, timeout=12) as response:
@@ -1854,18 +1932,18 @@ class FinanceService:
         candidates: list[dict[str, Any]] = []
 
         if os.name == "nt":
-            for name in (f"jarvis-buchhaltung-{version}-setup.exe", f"jarvis-buchhaltung-{version}-portable.exe"):
+            for name in (f"finanz-cockpit-{version}-setup.exe", f"finanz-cockpit-{version}-portable.exe"):
                 lower_name = name.lower()
                 if lower_name in known_names:
                     continue
-                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/buchhaltung/{tag}/{name}"
+                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/finanz-cockpit/{tag}/{name}"
                 if self.url_is_reachable(url):
                     candidates.append({"name": name, "url": url, "size": 0})
         else:
-            name = f"jarvis-buchhaltung_{version}_amd64.deb"
+            name = f"finanz-cockpit_{version}_amd64.deb"
             lower_name = name.lower()
             if lower_name not in known_names:
-                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/buchhaltung/{tag}/dist/deb/{name}"
+                url = f"https://raw.githubusercontent.com/JARVIS-ai-code/finanz-cockpit/{tag}/dist/deb/{name}"
                 if self.url_is_reachable(url):
                     candidates.append({"name": name, "url": url, "size": 0})
 
@@ -1873,7 +1951,7 @@ class FinanceService:
 
     def url_is_reachable(self, url: str) -> bool:
         try:
-            request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "jarvis-buchhaltung-update-checker"})
+            request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "finanz-cockpit-update-checker"})
             with urllib.request.urlopen(request, timeout=6):
                 return True
         except urllib.error.HTTPError as exc:
@@ -1883,7 +1961,7 @@ class FinanceService:
             return False
 
         try:
-            request = urllib.request.Request(url, method="GET", headers={"Range": "bytes=0-0", "User-Agent": "jarvis-buchhaltung-update-checker"})
+            request = urllib.request.Request(url, method="GET", headers={"Range": "bytes=0-0", "User-Agent": "finanz-cockpit-update-checker"})
             with urllib.request.urlopen(request, timeout=6):
                 return True
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
@@ -2027,7 +2105,7 @@ class FinanceService:
                 task_id,
                 status="completed",
                 phase="completed",
-                message="Update installiert. Bitte Programm neu starten." if restart_required else "Installer wurde gestartet.",
+                message="Update installiert. Programm wird neu gestartet." if restart_required else "Installer wurde gestartet.",
                 launched=True,
                 restart_required=restart_required,
                 downloaded_bytes=last_downloaded,
@@ -2053,7 +2131,7 @@ class FinanceService:
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / name
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "jarvis-buchhaltung-updater"}, method="GET")
+            request = urllib.request.Request(url, headers={"User-Agent": "finanz-cockpit-updater"}, method="GET")
             with urllib.request.urlopen(request, timeout=30) as response:
                 total_raw = response.headers.get("Content-Length", "0").strip()
                 try:

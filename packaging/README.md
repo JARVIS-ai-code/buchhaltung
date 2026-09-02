@@ -13,7 +13,7 @@ packaging/linux/build_deb.sh
 ```
 
 Ergebnis:
-- `dist/deb/jarvis-buchhaltung_<version>_amd64.deb`
+- `dist/deb/finanz-cockpit_<version>_amd64.deb`
 
 ## Windows
 
@@ -27,12 +27,12 @@ npm run dist:win
 ```
 
 Was passiert dabei:
-- `scripts/build-backend-win.js` baut zuerst `app_backend.py` mit PyInstaller zu `dist/backend/JarvisBuchhaltungBackend.exe`
+- `scripts/build-backend-win.js` baut zuerst `app_backend.py` mit PyInstaller zu `dist/backend/FinanzCockpitBackend.exe`
 - `electron-builder` erstellt danach den NSIS-Installer (`.exe`)
 
 Ergebnis:
-- `dist/electron/jarvis-buchhaltung-<version>-setup.exe`
-- `dist/electron/jarvis-buchhaltung-<version>-portable.exe`
+- `dist/electron/finanz-cockpit-<version>-setup.exe`
+- `dist/electron/finanz-cockpit-<version>-portable.exe`
 
 Wenn der Setup-Installer auf einem System durch Richtlinien/Defender blockiert wird:
 

@@ -1,7 +1,7 @@
 {
-  "name": "jarvis-buchhaltung",
+  "name": "finanz-cockpit",
   "version": "1.4.0",
-  "description": "JARVIS Buchhaltungssystem mit Electron-Oberfläche und Python/SQLite-Core",
+  "description": "Finanz Cockpit mit Electron-Oberfläche und Python/SQLite-Core",
   "main": "electron/main.js",
   "scripts": {
     "start": "node scripts/start-electron.js",
@@ -19,8 +19,8 @@
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.jarvis.buchhaltung",
-    "productName": "JARVIS Buchhaltungssystem",
+    "appId": "com.finanz.cockpit",
+    "productName": "Finanz Cockpit",
     "asar": true,
     "compression": "normal",
     "directories": {
@@ -37,8 +37,8 @@
     ],
     "extraResources": [
       {
-        "from": "dist/backend/JarvisBuchhaltungBackend.exe",
-        "to": "backend/JarvisBuchhaltungBackend.exe"
+        "from": "dist/backend/FinanzCockpitBackend.exe",
+        "to": "backend/FinanzCockpitBackend.exe"
       },
       {
         "from": "version.json",
@@ -54,8 +54,8 @@
         "nsis",
         "portable"
       ],
-      "icon": "assets/icons/jarvis-buchhaltung.ico",
-      "artifactName": "jarvis-buchhaltung-${version}-setup.${ext}"
+      "icon": "assets/icons/finanz-cockpit.ico",
+      "artifactName": "finanz-cockpit-${version}-setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -64,11 +64,11 @@
       "allowElevation": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "JARVIS Buchhaltungssystem",
-      "artifactName": "jarvis-buchhaltung-${version}-setup.${ext}"
+      "shortcutName": "Finanz Cockpit",
+      "artifactName": "finanz-cockpit-${version}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "jarvis-buchhaltung-${version}-portable.${ext}"
+      "artifactName": "finanz-cockpit-${version}-portable.${ext}"
     }
   }
 }

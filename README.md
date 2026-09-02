@@ -1,8 +1,8 @@
-# Buchhaltung (Electron + Python/SQLite)
+# Finanz Cockpit (Electron + Python/SQLite)
 
 Desktop-App mit Electron-Oberfläche und Python-Core:
 - Oberfläche: Electron + HTML/CSS/JS (`electron/`, `web/`)
-- Verarbeitung und SQLite: Python (`buchhaltung_core/`, `app_backend.py`)
+- Verarbeitung und SQLite: Python (`finanz_cockpit_core/`, `app_backend.py`)
 - Datenbank bleibt lokal benutzerbezogen in SQLite.
 
 Die alten nativen GTK/PySide-Dateien liegen zur Referenz unter `alt/`.
@@ -19,13 +19,13 @@ Alternativ startet `python3 app.py` dieselbe Electron-App, sobald `npm install` 
 ## Datenspeicherung
 
 Die Daten werden lokal benutzerbezogen in SQLite gespeichert:
-- Linux: `~/.local/share/JarvisBuchhaltung/buchhaltung.db`
-- Windows: `%APPDATA%\JarvisBuchhaltung\buchhaltung.db`
+- Linux: `~/.local/share/FinanzCockpit/finanz-cockpit.db`
+- Windows: `%APPDATA%\FinanzCockpit\finanz-cockpit.db`
 
 ## Updates
 
 - Versionsquelle: `version.json`
-- Update-Prüfung über GitHub Releases (`JARVIS-ai-code/buchhaltung`)
+- Update-Prüfung über GitHub Releases (`JARVIS-ai-code/finanz-cockpit`)
 
 ## Installer bauen
 
