@@ -7,14 +7,23 @@ let mainWindow = null;
 let backend = null;
 let backendUrl = "";
 let lastMidnightFocusDate = "";
-const launchedFromAutostart = process.argv.includes("--autostart");
+
+function isAutostartLaunch(commandLine = process.argv) {
+  return Array.isArray(commandLine) && commandLine.includes("--autostart");
+}
+
+const launchedFromAutostart = isAutostartLaunch();
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    focusMainWindow();
+  app.on("second-instance", (_event, commandLine) => {
+    // A stale startup entry can briefly launch a second hidden instance during migration.
+    // Only an explicit user launch is allowed to bring the existing window to the front.
+    if (!isAutostartLaunch(commandLine)) {
+      focusMainWindow();
+    }
   });
 }
 

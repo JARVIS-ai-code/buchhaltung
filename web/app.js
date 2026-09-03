@@ -24,7 +24,7 @@ const REMINDER_SHOWN_DATE_KEY = "finanz-cockpit-reminder-shown-date";
 const REMINDER_SNOOZED_DATE_KEY = "finanz-cockpit-reminder-snoozed-date";
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MONTH_LABELS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
-const ACCOUNT_COLOR_PRESETS = ["#38a1ff", "#35d59b", "#ffc857", "#ff7ac8", "#7c5cff", "#2ee9d3", "#ff5f7a", "#a3e635"];
+const ACCOUNT_COLOR_PRESETS = ["#4A3C1A", "#8B6914", "#C9A227", "#D4B896", "#F5E6C8", "#6B581B", "#A9892A", "#BDA16E"];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -39,7 +39,7 @@ function escapeHtml(value) {
 }
 
 function accountColor(accountId) {
-  return state.data?.account_colors?.[accountId] || "#38a1ff";
+  return state.data?.account_colors?.[accountId] || "#C9A227";
 }
 
 function accountGlowStyle(accountId) {
@@ -58,7 +58,7 @@ function recurringFrequencyLabel(frequency, kind = "standard") {
 
 function normalizeColor(value) {
   const color = String(value || "").trim();
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : "#38a1ff";
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : "#C9A227";
 }
 
 function colorControl(value, attrs = "", name = "") {
@@ -579,6 +579,15 @@ function monthLabel(month) {
   return `${MONTH_LABELS[monthNum - 1]} ${year} (${String(monthNum).padStart(2, "0")}-${year})`;
 }
 
+function monthNameYear(month) {
+  const parts = String(month || "").split("-");
+  if (parts.length !== 2) return String(month || "");
+  const year = Number(parts[0]);
+  const monthNum = Number(parts[1]);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) return String(month || "");
+  return `${MONTH_LABELS[monthNum - 1]} ${year}`;
+}
+
 function monthIndex(month) {
   const [yearText, monthText] = String(month || "").split("-");
   const year = Number(yearText);
@@ -816,7 +825,7 @@ function selectField(label, name, options, selected = "") {
   `;
 }
 
-function card(title, subtitle, content, span = 6) {
+function card(title, subtitle, content, span = 6, headerAction = "") {
   return `
     <article class="card span-${span}">
       <div class="card-head">
@@ -824,6 +833,7 @@ function card(title, subtitle, content, span = 6) {
           <h2>${escapeHtml(title)}</h2>
           <div class="subtitle">${escapeHtml(subtitle)}</div>
         </div>
+        ${headerAction}
       </div>
       ${content}
     </article>
@@ -977,11 +987,17 @@ function renderDashboard() {
       </div>
     </div>
     <div class="grid">
-      ${kpiCard("Einnahmen", d.summary.income_label, "positive", 3)}
-      ${kpiCard("Ausgaben", d.summary.expense_label, "negative", 3)}
-      ${kpiCard("Übrig", d.summary.remaining_label, moneyClass(d.summary.remaining), 3)}
-      ${kpiCard("Offen", d.summary.open_total_label, "warn-text", 3)}
-      ${card("Ausgewählter Monat", "Monat, für den du deine Finanzen ansiehst", monthNavigatorContent(d), 12)}
+      ${kpiCard("Einnahmen", d.summary.income_label, "kpi-income", 3)}
+      ${kpiCard("Ausgaben", d.summary.expense_label, "kpi-expense", 3)}
+      ${kpiCard("Übrig", d.summary.remaining_label, kpiRemainingClass(d.summary.remaining), 3)}
+      ${kpiCard("Offen", d.summary.open_total_label, "kpi-open", 3)}
+      ${card(
+        "Ausgewählter Monat",
+        "Monat, für den du deine Finanzen ansiehst",
+        monthNavigatorContent(d, true),
+        12,
+        `<button class="ghost dashboard-current-month-button" data-action="change-month" data-month="${escapeHtml(currentMonthKey())}">Zum aktuellen Monat</button>`
+      )}
       ${card("Offene Zahlungen", "Noch nicht erledigte Dauerzahlungen", `
         <div class="list compact-list">
           ${(d.open_amounts || []).map((item) => `
@@ -1034,7 +1050,11 @@ function kpiCard(label, value, valueClass, span = 3) {
   `, span);
 }
 
-function monthNavigatorContent(d) {
+function kpiRemainingClass(value) {
+  return Number(value || 0) >= 0 ? "kpi-remaining-positive" : "kpi-remaining-negative";
+}
+
+function monthNavigatorContent(d, dashboardMode = false) {
   const months = collectVisibleMonths(d);
   const visibleMonth = d.visible_month;
   const previousMonth = shiftMonth(visibleMonth, -1);
@@ -1043,24 +1063,31 @@ function monthNavigatorContent(d) {
   const knownMonthValues = new Set(months);
   const nextExists = knownMonthValues.has(nextMonth);
   const nextIsFuture = monthIndex(nextMonth) !== null && monthIndex(nextMonth) > monthIndex(todayMonth);
-  const nextButtonLabel = nextExists && !nextIsFuture ? `Weiter zu ${monthLabel(nextMonth)}` : "Nächster Monat";
   const previousMonths = months.filter((month) => {
     const monthPos = monthIndex(month);
     const visiblePos = monthIndex(visibleMonth);
     return monthPos !== null && visiblePos !== null && monthPos < visiblePos;
   });
+  const historyMonths = dashboardMode
+    ? Array.from({ length: 5 }, (_value, index) => shiftMonth(visibleMonth, -(index + 1))).filter(Boolean)
+    : previousMonths;
+  const navigatorClass = dashboardMode ? " dashboard-month-navigator" : "";
+  const currentClass = dashboardMode ? " dashboard-month-current" : "";
+  const historyClass = dashboardMode ? " dashboard-month-history" : "";
+  const previousButtonLabel = dashboardMode ? "Zurück" : `Zurück zu ${monthLabel(previousMonth)}`;
+  const nextButtonLabel = dashboardMode ? "Weiter" : (nextExists && !nextIsFuture ? `Weiter zu ${monthLabel(nextMonth)}` : "Nächster Monat");
   return `
-    <div class="month-navigator">
-      <button class="ghost" data-action="change-month" data-month="${escapeHtml(previousMonth)}">Zurück zu ${escapeHtml(monthLabel(previousMonth))}</button>
-      <div class="month-current">
+    <div class="month-navigator${navigatorClass}">
+      <button class="ghost" data-action="change-month" data-month="${escapeHtml(previousMonth)}" aria-label="Zurück zu ${escapeHtml(monthLabel(previousMonth))}">${escapeHtml(previousButtonLabel)}</button>
+      <div class="month-current${currentClass}">
         <div>Ausgewählter Monat</div>
         <strong>${escapeHtml(d.visible_month_label)}</strong>
       </div>
-      <button class="solid" data-action="change-month" data-month="${escapeHtml(nextMonth)}">${escapeHtml(nextButtonLabel)}</button>
+      <button class="solid" data-action="change-month" data-month="${escapeHtml(nextMonth)}" aria-label="Weiter zu ${escapeHtml(monthLabel(nextMonth))}">${escapeHtml(nextButtonLabel)}</button>
     </div>
-    <div class="month-history">
-      ${previousMonths.length ? previousMonths.map((month) => `
-        <button class="chip" data-action="change-month" data-month="${escapeHtml(month)}">${escapeHtml(monthLabel(month))}</button>
+    <div class="month-history${historyClass}">
+      ${historyMonths.length ? historyMonths.map((month) => `
+        <button class="chip" data-action="change-month" data-month="${escapeHtml(month)}">${escapeHtml(dashboardMode ? monthNameYear(month) : monthLabel(month))}</button>
       `).join("") : `<p class="empty">Keine vorherigen Monate vorhanden.</p>`}
     </div>
   `;
@@ -1091,6 +1118,7 @@ function renderBookings() {
     </form>
   `;
   const accountSetup = { action: "open-account-settings", label: "Jetzt Konto hinterlegen" };
+  const recurringSetup = accounts.length ? null : accountSetup;
   const incomeSetup = !accounts.length
     ? accountSetup
     : !incomeSources.length
@@ -1106,7 +1134,7 @@ function renderBookings() {
     <div class="grid">
       ${card("Einnahme erfassen", "Lohn, Spesen oder eigene Quelle", lockedEntryContent(incomeForm, incomeSetup), 6)}
       ${card("Ausgabe erfassen", "Kategorie oder Beschreibung", lockedEntryContent(expenseForm, accounts.length ? null : accountSetup), 6)}
-      ${card("Wiederkehrende Zahlungen", `${recurring.length} aktive Zahlung(en)`, `
+      ${card("Wiederkehrende Zahlungen", `${recurring.length} aktive Zahlung(en)`, lockedEntryContent(`
         <div class="actions">
           <button class="solid" data-action="new-recurring">Dauerzahlung hinzufügen</button>
           <button class="ghost" data-action="new-installment">Abzahlung</button>
@@ -1114,7 +1142,7 @@ function renderBookings() {
         <div class="list" style="margin-top:12px">
           ${recurring.map(recurringManagementRow).join("") || `<p class="empty">Keine wiederkehrenden Zahlungen angelegt.</p>`}
         </div>
-      `, 12)}
+      `, recurringSetup), 12)}
     </div>
   `;
   bindForm($("#page-bookings"), "#income-form", async (payload, form) => {
@@ -1333,9 +1361,9 @@ function renderAnalysis() {
     <div class="grid">
       ${card("Monatsergebnis", d.visible_month_label, `
         <div class="grid">
-          <div class="kpi span-4"><div class="label">Einnahmen</div><div class="value positive">${escapeHtml(d.summary.income_label)}</div></div>
-          <div class="kpi span-4"><div class="label">Ausgaben</div><div class="value negative">${escapeHtml(d.summary.expense_label)}</div></div>
-          <div class="kpi span-4"><div class="label">Übrig</div><div class="value ${moneyClass(d.summary.remaining)}">${escapeHtml(d.summary.remaining_label)}</div></div>
+          <div class="kpi span-4"><div class="label">Einnahmen</div><div class="value kpi-income">${escapeHtml(d.summary.income_label)}</div></div>
+          <div class="kpi span-4"><div class="label">Ausgaben</div><div class="value kpi-expense">${escapeHtml(d.summary.expense_label)}</div></div>
+          <div class="kpi span-4"><div class="label">Übrig</div><div class="value ${kpiRemainingClass(d.summary.remaining)}">${escapeHtml(d.summary.remaining_label)}</div></div>
         </div>
         <div class="actions">
           <button class="chip ${!state.analysisFilterAccount ? "active" : ""}" data-action="filter-account" data-id="">Alle</button>
@@ -1384,68 +1412,123 @@ function formatAmount(value) {
 
 function renderSettings() {
   const d = state.data;
+  const accounts = d.accounts || [];
+  const incomeSources = d.income_sources || [];
   const autostartEnabled = Boolean(d.settings.autostart_enabled);
   const autostartStartHidden = autostartEnabled && Boolean(d.settings.autostart_start_hidden);
   $("#page-settings").innerHTML = `
-    <div class="page-title">
-      <div>
-        <h1>Einstellungen</h1>
-        <p>App-Verhalten, Updates und Stammdaten</p>
-      </div>
-    </div>
-    <div class="grid">
-      ${card("App-Einstellungen", "Währung, Autostart und Updates", `
-        <form id="settings-form" class="form-grid settings-form">
-          ${field("Währung", "currency", d.settings.currency || "EUR")}
-          ${field("Update-Prüfung alle Stunden", "update_check_interval_hours", d.settings.update_check_interval_hours || 6, "type=\"number\" min=\"1\" max=\"168\"")}
-          <label class="check-pill"><input type="checkbox" name="autostart_enabled" ${autostartEnabled ? "checked" : ""}>Autostart aktivieren</label>
-          <label class="check-pill ${autostartEnabled ? "" : "is-disabled"}" data-autostart-hidden-pill><input type="checkbox" name="autostart_start_hidden" ${autostartStartHidden ? "checked" : ""} ${autostartEnabled ? "" : "disabled"}>Im Hintergrund starten</label>
-          <label class="check-pill"><input type="checkbox" name="auto_update_check" ${d.settings.auto_update_check ? "checked" : ""}>Periodisch auf Updates prüfen</label>
-          <div class="actions">
-            <button class="solid" type="submit">Einstellungen speichern</button>
-            <button class="ghost" type="button" data-action="check-update">Jetzt auf Updates prüfen</button>
-            <button class="ghost" type="button" data-action="open-db-folder">DB-Ordner öffnen</button>
+    <div class="settings-shell">
+      <header class="settings-hero">
+        <div>
+          <div class="settings-eyebrow">Arbeitsbereich</div>
+          <h1>Einstellungen</h1>
+          <p>Verwalte das Verhalten der App und deine Finanz-Stammdaten an einem Ort.</p>
+        </div>
+        <div class="settings-hero-meta" aria-label="Übersicht">
+          <span><strong>${accounts.length}</strong> ${accounts.length === 1 ? "Konto" : "Konten"}</span>
+          <span><strong>${incomeSources.length}</strong> ${incomeSources.length === 1 ? "Einnahmequelle" : "Einnahmequellen"}</span>
+        </div>
+      </header>
+      <div class="settings-layout">
+        <article class="settings-panel settings-preferences">
+          <div class="settings-panel-head">
+            <div>
+              <div class="settings-section-label">App</div>
+              <h2>Allgemeines Verhalten</h2>
+              <p>Lege Währung, Startverhalten und Update-Rhythmus fest.</p>
+            </div>
           </div>
-        </form>
-        <p class="muted">Aktuelle Version: ${escapeHtml(d.version)}</p>
-      `, 12)}
-      ${card("Konten", "Stammdaten für Buchungen und Zahlungsplan", `
-        <form id="account-form" class="form-grid account-create-form">
-          ${field("Neues Konto", "name", "", "required")}
-          ${colorPickerField("Farbe", "color", "#38a1ff")}
-          <div class="actions"><button class="solid" type="submit">Konto anlegen</button></div>
-        </form>
-        <div class="list" style="margin-top:12px">
-          ${(d.accounts || []).map((account) => `
-            <div class="account-row" ${accountGlowStyle(account.id)}>
-              <div class="account-row-main">
-                <div class="row-title">${escapeHtml(account.name)}</div>
-              </div>
-              <div class="account-row-controls">
-                <div class="account-color-field" title="Kontofarbe">
-                  ${colorControl(account.color || accountColor(account.id), `data-account-color="${escapeHtml(account.id)}" aria-label="Kontofarbe ${escapeHtml(account.name)}"`)}
+          <form id="settings-form" class="settings-form">
+            <div class="settings-fields">
+              ${field("Währung", "currency", d.settings.currency || "EUR")}
+              ${field("Update-Prüfung alle Stunden", "update_check_interval_hours", d.settings.update_check_interval_hours || 6, "type=\"number\" min=\"1\" max=\"168\"")}
+            </div>
+            <div class="settings-toggles">
+              <label class="settings-toggle">
+                <input type="checkbox" name="autostart_enabled" ${autostartEnabled ? "checked" : ""}>
+                <span class="settings-toggle-copy"><strong>Autostart aktivieren</strong><small>Finanz Cockpit startet mit dem System.</small></span>
+              </label>
+              <label class="settings-toggle ${autostartEnabled ? "" : "is-disabled"}" data-autostart-hidden-pill>
+                <input type="checkbox" name="autostart_start_hidden" ${autostartStartHidden ? "checked" : ""} ${autostartEnabled ? "" : "disabled"}>
+                <span class="settings-toggle-copy"><strong>Im Hintergrund starten</strong><small>Beim Autostart bleibt das Fenster geschlossen.</small></span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" name="auto_update_check" ${d.settings.auto_update_check ? "checked" : ""}>
+                <span class="settings-toggle-copy"><strong>Automatisch nach Updates suchen</strong><small>Prüft im gewählten Rhythmus auf neue Versionen.</small></span>
+              </label>
+            </div>
+            <div class="settings-save-row">
+              <button class="solid" type="submit">Änderungen speichern</button>
+              <span>Deine Änderungen werden sofort gespeichert.</span>
+            </div>
+          </form>
+        </article>
+        <article class="settings-panel settings-maintenance">
+          <div class="settings-panel-head">
+            <div>
+              <div class="settings-section-label">Wartung</div>
+              <h2>Update &amp; Daten</h2>
+              <p>Prüfe neue Versionen oder öffne den Speicherort deiner Datenbank.</p>
+            </div>
+          </div>
+          <div class="settings-maintenance-actions">
+            <button class="ghost" type="button" data-action="check-update">Jetzt auf Updates prüfen</button>
+            <button class="ghost" type="button" data-action="open-db-folder">Datenbank-Ordner öffnen</button>
+          </div>
+          <div class="settings-version"><span>Installierte Version</span><strong>${escapeHtml(d.version)}</strong></div>
+        </article>
+        <article class="settings-panel settings-accounts">
+          <div class="settings-panel-head settings-data-head">
+            <div>
+              <div class="settings-section-label">Stammdaten</div>
+              <h2>Konten</h2>
+              <p>Konten für Buchungen und den Zahlungsplan.</p>
+            </div>
+            <span class="settings-count">${accounts.length}</span>
+          </div>
+          <form id="account-form" class="form-grid account-create-form settings-inline-form">
+            ${field("Neues Konto", "name", "", "required")}
+            ${colorPickerField("Farbe", "color", "#C9A227")}
+            <div class="actions"><button class="solid" type="submit">Konto anlegen</button></div>
+          </form>
+          <div class="list settings-list">
+            ${accounts.map((account) => `
+              <div class="account-row" ${accountGlowStyle(account.id)}>
+                <div class="account-row-main"><div class="row-title">${escapeHtml(account.name)}</div></div>
+                <div class="account-row-controls">
+                  <div class="account-color-field" title="Kontofarbe">
+                    ${colorControl(account.color || accountColor(account.id), `data-account-color="${escapeHtml(account.id)}" aria-label="Kontofarbe ${escapeHtml(account.name)}"`)}
+                  </div>
+                  <button class="danger-button" data-action="delete-account" data-id="${escapeHtml(account.id)}">Löschen</button>
                 </div>
-                <button class="danger-button" data-action="delete-account" data-id="${escapeHtml(account.id)}">Löschen</button>
               </div>
+            `).join("") || `<p class="empty settings-empty">Noch keine Konten angelegt.</p>`}
+          </div>
+        </article>
+        <article class="settings-panel settings-sources">
+          <div class="settings-panel-head settings-data-head">
+            <div>
+              <div class="settings-section-label">Stammdaten</div>
+              <h2>Einnahmequellen</h2>
+              <p>Auswahlwerte für neue Einnahmen.</p>
             </div>
-          `).join("") || `<p class="empty">Keine Konten vorhanden.</p>`}
-        </div>
-      `, 12)}
-      ${card("Einnahmequellen", "Auswahlwerte für neue Einnahmen", `
-        <form id="source-form" class="form-grid single">
-          ${field("Neue Einnahmequelle", "name", "", "required")}
-          <div class="actions"><button class="solid" type="submit">Hinzufügen</button></div>
-        </form>
-        <div class="list" style="margin-top:12px">
-          ${(d.income_sources || []).map((source) => `
-            <div class="source-row">
-              <input value="${escapeHtml(source)}" data-source="${escapeHtml(source)}">
-              <button class="ghost" data-action="rename-source" data-source="${escapeHtml(source)}">Speichern</button>
-              <button class="danger-button" data-action="delete-source" data-source="${escapeHtml(source)}">Löschen</button>
-            </div>
-          `).join("") || `<p class="empty">Keine Einnahmequellen angelegt.</p>`}
-        </div>
-      `, 12)}
+            <span class="settings-count">${incomeSources.length}</span>
+          </div>
+          <form id="source-form" class="form-grid single settings-source-form">
+            ${field("Neue Einnahmequelle", "name", "", "required")}
+            <div class="actions"><button class="solid" type="submit">Hinzufügen</button></div>
+          </form>
+          <div class="list settings-list">
+            ${incomeSources.map((source) => `
+              <div class="source-row">
+                <input value="${escapeHtml(source)}" data-source="${escapeHtml(source)}">
+                <button class="ghost" data-action="rename-source" data-source="${escapeHtml(source)}">Speichern</button>
+                <button class="danger-button" data-action="delete-source" data-source="${escapeHtml(source)}">Löschen</button>
+              </div>
+            `).join("") || `<p class="empty settings-empty">Noch keine Einnahmequellen angelegt.</p>`}
+          </div>
+        </article>
+      </div>
     </div>
   `;
   bindAutostartControls($("#page-settings"));

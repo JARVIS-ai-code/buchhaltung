@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    color TEXT NOT NULL DEFAULT '#38a1ff'
+    color TEXT NOT NULL DEFAULT '#C9A227'
 );
 CREATE TABLE IF NOT EXISTS recurring_payments (
     id TEXT PRIMARY KEY,
@@ -112,14 +112,14 @@ DEFAULT_DATA = {
 }
 
 DEFAULT_ACCOUNT_COLORS = [
-    "#38a1ff",
-    "#35d59b",
-    "#ffc857",
-    "#ff7ac8",
-    "#7c5cff",
-    "#2ee9d3",
-    "#ff5f7a",
-    "#a3e635",
+    "#4A3C1A",
+    "#8B6914",
+    "#C9A227",
+    "#D4B896",
+    "#F5E6C8",
+    "#6B581B",
+    "#A9892A",
+    "#BDA16E",
 ]
 
 
@@ -211,7 +211,7 @@ def parse_float(text: Any) -> float:
     return float(str(text).strip().replace(",", "."))
 
 
-def clean_color(value: Any, fallback: str = "#38a1ff") -> str:
+def clean_color(value: Any, fallback: str = "#C9A227") -> str:
     text = str(value or "").strip()
     if len(text) == 7 and text.startswith("#") and all(char in "0123456789abcdefABCDEF" for char in text[1:]):
         return text.lower()
@@ -441,7 +441,7 @@ class FinanceService:
             conn.executescript(SCHEMA_SQL)
             account_columns = {row["name"] for row in conn.execute("PRAGMA table_info(accounts)")}
             if "color" not in account_columns:
-                conn.execute("ALTER TABLE accounts ADD COLUMN color TEXT NOT NULL DEFAULT '#38a1ff'")
+                conn.execute("ALTER TABLE accounts ADD COLUMN color TEXT NOT NULL DEFAULT '#C9A227'")
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(recurring_payments)")}
             if "skipped_months" not in columns:
                 conn.execute("ALTER TABLE recurring_payments ADD COLUMN skipped_months TEXT NOT NULL DEFAULT '[]'")
@@ -853,7 +853,7 @@ class FinanceService:
         if account is None:
             raise FinanceError("Konto nicht gefunden.")
         if "color" in payload:
-            account["color"] = clean_color(payload.get("color"), account.get("color", "#38a1ff"))
+            account["color"] = clean_color(payload.get("color"), account.get("color", "#C9A227"))
         self.save_payload(data)
 
     def delete_account(self, account_id: str) -> None:
@@ -1788,15 +1788,25 @@ class FinanceService:
     def configure_linux_autostart(self, enabled: bool) -> None:
         autostart_dir = Path.home() / ".config" / "autostart"
         desktop_file = autostart_dir / "finanz-cockpit.desktop"
+        legacy_desktop_file = autostart_dir / "jarvis-buchhaltung.desktop"
         if not enabled:
-            if desktop_file.exists():
+            for file_path in (desktop_file, legacy_desktop_file):
+                if not file_path.exists():
+                    continue
                 try:
-                    desktop_file.unlink()
+                    file_path.unlink()
                 except OSError:
                     pass
             return
         try:
             autostart_dir.mkdir(parents=True, exist_ok=True)
+            # The predecessor used its own desktop file. Remove it so the app is not
+            # started twice after an update from older releases.
+            if legacy_desktop_file.exists():
+                try:
+                    legacy_desktop_file.unlink()
+                except OSError:
+                    pass
             command_parts = self.autostart_command_parts()
             exec_line = " ".join(f"\"{part}\"" for part in command_parts)
             desktop_file.write_text(
