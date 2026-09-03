@@ -2044,6 +2044,7 @@ class FinanceService:
             "path": "",
             "launched": False,
             "restart_required": False,
+            "quit_required": False,
             "error": "",
             "started_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
             "finished_at": "",
@@ -2104,20 +2105,28 @@ class FinanceService:
 
             target_path = self.download_update_file(asset, on_progress)
             self._update_task(task_id, phase="install", message="Installer wird gestartet.", path=str(target_path))
-            launched = self.launch_update_installer(target_path)
-            if not launched:
-                raise FinanceError("Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
+            launch_result = self.launch_update_installer(target_path)
+            if not launch_result["launched"]:
+                raise FinanceError(launch_result["error"] or "Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
 
             final_total = int(self.get_update_task(task_id).get("total_bytes", 0))
             final_percent = 100.0 if final_total > 0 else 0.0
-            restart_required = os.name != "nt"
+            restart_required = bool(launch_result["restart_required"])
+            quit_required = bool(launch_result["quit_required"])
             self._update_task(
                 task_id,
                 status="completed",
                 phase="completed",
-                message="Update installiert. Programm wird neu gestartet." if restart_required else "Installer wurde gestartet.",
+                message=(
+                    "Update installiert. Programm wird neu gestartet."
+                    if restart_required
+                    else "Installer wird gestartet. Programm wird geschlossen."
+                    if quit_required
+                    else "Installer wurde geöffnet. Bitte Installation abschließen."
+                ),
                 launched=True,
                 restart_required=restart_required,
+                quit_required=quit_required,
                 downloaded_bytes=last_downloaded,
                 progress_percent=final_percent,
             )
@@ -2168,66 +2177,86 @@ class FinanceService:
 
     def download_and_launch_update(self, asset: dict[str, Any]) -> dict[str, Any]:
         target_path = self.download_update_file(asset)
-        launched = self.launch_update_installer(target_path)
-        if not launched:
-            raise FinanceError("Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
-        return {"path": str(target_path), "launched": launched}
+        launch_result = self.launch_update_installer(target_path)
+        if not launch_result["launched"]:
+            raise FinanceError(launch_result["error"] or "Update-Installation konnte nicht gestartet werden. Bitte Paket manuell installieren.")
+        return {"path": str(target_path), **launch_result}
 
-    def launch_update_installer(self, update_path: Path) -> bool:
+    def launch_update_installer(self, update_path: Path) -> dict[str, Any]:
+        def launch_result(launched: bool, *, restart_required: bool = False, quit_required: bool = False, error: str = "") -> dict[str, Any]:
+            return {
+                "launched": launched,
+                "restart_required": restart_required,
+                "quit_required": quit_required,
+                "error": error,
+            }
+
         name = update_path.name.lower()
         if os.name == "nt":
             try:
-                os.startfile(str(update_path))  # type: ignore[attr-defined]
-                return True
-            except OSError:
-                return False
+                # Let Electron release its locked executable before NSIS starts.
+                command = f'timeout /t 2 /nobreak >nul & start "" "{update_path}"'
+                flags = (
+                    getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    | getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                )
+                subprocess.Popen(["cmd.exe", "/d", "/s", "/c", command], creationflags=flags)
+                return launch_result(True, quit_required=True)
+            except OSError as exc:
+                return launch_result(False, error=f"Windows-Installer konnte nicht gestartet werden: {exc}")
         if name.endswith(".deb"):
             apt_cmd = shutil.which("apt") or shutil.which("apt-get")
+            errors: list[str] = []
             if shutil.which("pkexec") and apt_cmd:
                 try:
-                    result = subprocess.run(
+                    process_result = subprocess.run(
                         ["pkexec", apt_cmd, "install", "-y", str(update_path)],
                         check=False,
                         capture_output=True,
                         text=True,
                     )
-                    if result.returncode == 0:
-                        return True
-                except OSError:
-                    pass
+                    if process_result.returncode == 0:
+                        return {"launched": True, "restart_required": True, "quit_required": False, "error": ""}
+                    errors.append((process_result.stderr or process_result.stdout or "apt-Installation fehlgeschlagen.").strip())
+                except OSError as exc:
+                    errors.append(str(exc))
             if shutil.which("pkexec"):
                 try:
-                    result = subprocess.run(
+                    process_result = subprocess.run(
                         ["pkexec", "dpkg", "-i", str(update_path)],
                         check=False,
                         capture_output=True,
                         text=True,
                     )
-                    if result.returncode == 0:
-                        return True
-                except OSError:
-                    pass
+                    if process_result.returncode == 0:
+                        return {"launched": True, "restart_required": True, "quit_required": False, "error": ""}
+                    errors.append((process_result.stderr or process_result.stdout or "dpkg-Installation fehlgeschlagen.").strip())
+                except OSError as exc:
+                    errors.append(str(exc))
             if shutil.which("xdg-open"):
                 try:
                     subprocess.Popen(["xdg-open", str(update_path)])
-                    return True
-                except OSError:
-                    pass
-            return False
+                    # A software center still needs user confirmation, so the current app must stay open.
+                    return launch_result(True)
+                except OSError as exc:
+                    errors.append(str(exc))
+            detail = " ".join(item for item in errors if item)
+            return launch_result(False, error=f"Linux-Paketinstallation konnte nicht gestartet werden. {detail}".strip())
         if name.endswith(".appimage"):
             try:
                 update_path.chmod(update_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
                 subprocess.Popen([str(update_path)])
-                return True
-            except OSError:
-                return False
+                return launch_result(True)
+            except OSError as exc:
+                return launch_result(False, error=f"AppImage konnte nicht gestartet werden: {exc}")
         try:
             if shutil.which("xdg-open"):
                 subprocess.Popen(["xdg-open", str(update_path)])
-                return True
-        except OSError:
-            return False
-        return False
+                return launch_result(True)
+        except OSError as exc:
+            return launch_result(False, error=f"Installer konnte nicht geöffnet werden: {exc}")
+        return launch_result(False, error="Kein Programm zum Öffnen des Update-Pakets gefunden.")
 
     def open_db_folder(self) -> bool:
         folder = self.db_path.parent

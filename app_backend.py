@@ -239,6 +239,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/api/app/restart":
             schedule_process_exit(code=77)
             return {"restart": True}
+        if method == "POST" and path == "/api/app/quit":
+            schedule_process_exit(code=78)
+            return {"quit": True}
 
         raise FinanceError("Unbekannter API-Endpunkt.")
 

@@ -149,6 +149,8 @@ function startBackend() {
         if (code === 77) {
           app.relaunch();
           app.exit(0);
+        } else if (code === 78) {
+          app.exit(0);
         }
       });
     };

@@ -716,8 +716,13 @@ async function pollUpdateProgress() {
       if (modal?.open) modal.close();
       showToast("Update abgeschlossen. Programm wird neu gestartet.");
       await api("/api/app/restart", { method: "POST", body: {} });
+    } else if (task.quit_required) {
+      const modal = $("#update-progress-modal");
+      if (modal?.open) modal.close();
+      showToast("Installer wird gestartet. Programm wird geschlossen.");
+      await api("/api/app/quit", { method: "POST", body: {} });
     } else {
-      showToast("Update gestartet.");
+      showToast("Installer wurde geöffnet. Bitte Installation abschließen.");
     }
   } else if (task.status === "failed") {
     showToast(task.error || "Update fehlgeschlagen.");
@@ -2025,25 +2030,39 @@ async function periodicTick() {
     if (hasUnsavedDraft()) return;
     await loadState();
     maybeShowReminderPopup(false);
-    const settings = state.data?.settings || {};
-    if (!settings.auto_update_check) return;
-    const intervalMs = Math.max(1, Number(settings.update_check_interval_hours || 6)) * 3600 * 1000;
-    if (Date.now() - state.lastUpdateCheckAt < intervalMs) return;
-    state.lastUpdateCheckAt = Date.now();
-    const payload = await api("/api/update/check", { method: "POST", body: {} });
-    const update = payload.update;
-    if (!update?.is_newer || !update.asset || state.announcedUpdateTag === update.latest) return;
-    state.announcedUpdateTag = update.latest;
-    if (confirm(`Update ${update.latest} installieren?`)) {
-      await startUpdateInstall(update.asset);
-    }
+    await checkForUpdate();
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
+async function checkForUpdate(force = false) {
+  const settings = state.data?.settings || {};
+  if (!force && !settings.auto_update_check) return;
+  const intervalMs = Math.max(1, Number(settings.update_check_interval_hours || 6)) * 3600 * 1000;
+  if (!force && Date.now() - state.lastUpdateCheckAt < intervalMs) return;
+  state.lastUpdateCheckAt = Date.now();
+  const payload = await api("/api/update/check", { method: "POST", body: {} });
+  const update = payload.update;
+  if (!update?.is_newer || !update.asset || state.announcedUpdateTag === update.latest) return;
+  state.announcedUpdateTag = update.latest;
+  if (confirm(`Update ${update.latest} installieren?`)) {
+    await startUpdateInstall(update.asset);
+  }
+}
+
+async function startupUpdateCheck() {
+  try {
+    if (!state.data) await loadState();
+    // This one-time startup check intentionally runs before the periodic preference applies.
+    await checkForUpdate(true);
   } catch (error) {
     console.warn(error);
   }
 }
 
 setInterval(periodicTick, 60 * 1000);
-setTimeout(periodicTick, 30 * 1000);
+setTimeout(startupUpdateCheck, 15 * 1000);
 
 const reminderOpenAccountsBtn = $("#reminder-open-accounts");
 if (reminderOpenAccountsBtn) {
