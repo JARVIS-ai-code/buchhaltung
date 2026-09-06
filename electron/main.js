@@ -191,13 +191,18 @@ function startMidnightReminderFocus() {
   }, 60 * 1000);
 }
 
+function paymentNotificationLine(item, dueField) {
+  const description = String(item.description || "Zahlung").trim();
+  const amount = String(item.amount_label || "").trim();
+  const due = String(item[dueField] || "").trim();
+  return [description, amount, due ? `fällig ${due}` : ""].filter(Boolean).join(" · ");
+}
+
 function paymentNotificationBody(items, dueField, extraLabel) {
-  const preview = items.slice(0, 3).map((item) => (
-    `${item.description || "Zahlung"} (${item.amount_label || ""}) - fällig ${item[dueField] || ""}`
-  ));
+  const preview = items.slice(0, 3).map((item) => `• ${paymentNotificationLine(item, dueField)}`);
   const remaining = items.length - preview.length;
   if (remaining > 0) {
-    preview.push(`+ ${remaining} weitere ${extraLabel}`);
+    preview.push(`• + ${remaining} weitere ${extraLabel}`);
   }
   return preview.join("\n");
 }

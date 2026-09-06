@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS recurring_payments (
     start_date TEXT,
     end_date TEXT,
     final_amount REAL,
+    manual_transfer TEXT NOT NULL DEFAULT '{}',
     checked_months TEXT NOT NULL,
     skipped_months TEXT NOT NULL DEFAULT '[]',
     deferred_months TEXT NOT NULL DEFAULT '{}'
@@ -93,9 +94,13 @@ CREATE INDEX IF NOT EXISTS idx_incomes_account ON incomes(account_id);
 CREATE INDEX IF NOT EXISTS idx_recurring_account ON recurring_payments(account_id);
 """
 
+THEME_IDS = {"autumn", "monochrome", "deep-ocean", "mint-forest", "ice-cyan"}
+LEGACY_THEME_IDS = {"cyberpunk-light": "ice-cyan"}
+
 DEFAULT_DATA = {
     "settings": {
         "currency": "EUR",
+        "theme": "autumn",
         "income_sources": [],
         "visible_month": "",
         "autostart_enabled": False,
@@ -447,6 +452,8 @@ class FinanceService:
                 conn.execute("ALTER TABLE recurring_payments ADD COLUMN skipped_months TEXT NOT NULL DEFAULT '[]'")
             if "deferred_months" not in columns:
                 conn.execute("ALTER TABLE recurring_payments ADD COLUMN deferred_months TEXT NOT NULL DEFAULT '{}'")
+            if "manual_transfer" not in columns:
+                conn.execute("ALTER TABLE recurring_payments ADD COLUMN manual_transfer TEXT NOT NULL DEFAULT '{}'")
 
     def db_is_empty(self) -> bool:
         with self.connect() as conn:
@@ -506,7 +513,7 @@ class FinanceService:
             data["accounts"] = [dict(row) for row in conn.execute("SELECT id, name, color FROM accounts ORDER BY name COLLATE NOCASE")]
             data["recurring_payments"] = [self.recurring_from_row(row) for row in conn.execute(
                 """
-                SELECT id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months, skipped_months, deferred_months
+                SELECT id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, manual_transfer, checked_months, skipped_months, deferred_months
                 FROM recurring_payments
                 ORDER BY day, description COLLATE NOCASE
                 """
@@ -547,8 +554,8 @@ class FinanceService:
                 conn.execute(
                     """
                     INSERT INTO recurring_payments(
-                        id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, checked_months, skipped_months, deferred_months
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, kind, account_id, description, amount, day, frequency, start_date, end_date, final_amount, manual_transfer, checked_months, skipped_months, deferred_months
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         rec["id"],
@@ -561,6 +568,7 @@ class FinanceService:
                         rec.get("start_date") or "",
                         rec.get("end_date") or "",
                         rec.get("final_amount"),
+                        json.dumps(rec.get("manual_transfer", {}), ensure_ascii=False),
                         json.dumps(rec.get("checked_months", []), ensure_ascii=False),
                         json.dumps(rec.get("skipped_months", []), ensure_ascii=False),
                         json.dumps(rec.get("deferred_months", {}), ensure_ascii=False),
@@ -611,6 +619,7 @@ class FinanceService:
         # Keep only supported setting keys; silently drop legacy keys from older app versions.
         data["settings"] = {key: data["settings"].get(key) for key in DEFAULT_DATA["settings"].keys()}
         data["settings"]["currency"] = str(data["settings"].get("currency", "EUR")).strip().upper() or "EUR"
+        data["settings"]["theme"] = self.normalize_theme_id(data["settings"].get("theme"))
         for key, default in (("autostart_enabled", False), ("autostart_start_hidden", False), ("auto_update_check", True)):
             data["settings"][key] = parse_bool(data["settings"].get(key), default)
         if not data["settings"]["autostart_enabled"]:
@@ -634,6 +643,11 @@ class FinanceService:
         data["incomes"] = self.clean_transactions(data["incomes"], valid_accounts, "income")
         return data
 
+    def normalize_theme_id(self, value: Any) -> str:
+        theme = str(value or "autumn").strip().lower()
+        theme = LEGACY_THEME_IDS.get(theme, theme)
+        return theme if theme in THEME_IDS else "autumn"
+
     def recurring_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
         try:
             checked = json.loads(row["checked_months"] or "[]")
@@ -647,6 +661,10 @@ class FinanceService:
             deferred = json.loads(row["deferred_months"] or "{}")
         except (IndexError, json.JSONDecodeError):
             deferred = {}
+        try:
+            manual_transfer = json.loads(row["manual_transfer"] or "{}")
+        except (IndexError, json.JSONDecodeError):
+            manual_transfer = {}
         return {
             "id": row["id"],
             "kind": row["kind"],
@@ -658,6 +676,7 @@ class FinanceService:
             "start_date": row["start_date"] or "",
             "end_date": row["end_date"] or "",
             "final_amount": row["final_amount"],
+            "manual_transfer": self.clean_manual_transfer(manual_transfer),
             "checked_months": checked if isinstance(checked, list) else [],
             "skipped_months": skipped if isinstance(skipped, list) else [],
             "deferred_months": deferred if isinstance(deferred, dict) else {},
@@ -697,6 +716,22 @@ class FinanceService:
             if target == month_shift(source, 1):
                 cleaned[source] = target
         return dict(sorted(cleaned.items()))
+
+    def clean_manual_transfer(self, value: Any) -> dict[str, Any]:
+        raw = value if isinstance(value, dict) else {}
+        transfer_type = str(raw.get("type") or "private").strip().lower()
+        if transfer_type not in ("private", "company"):
+            transfer_type = "private"
+        return {
+            "enabled": parse_bool(raw.get("enabled"), False),
+            "type": transfer_type,
+            "first_name": str(raw.get("first_name") or "").strip(),
+            "last_name": str(raw.get("last_name") or "").strip(),
+            "company_name": str(raw.get("company_name") or "").strip(),
+            "iban": str(raw.get("iban") or "").strip().upper().replace(" ", ""),
+            "bic": str(raw.get("bic") or "").strip().upper().replace(" ", ""),
+            "purpose": str(raw.get("purpose") or "").strip(),
+        }
 
     def clean_accounts(self, accounts: Any) -> list[dict[str, str]]:
         cleaned: list[dict[str, str]] = []
@@ -757,6 +792,7 @@ class FinanceService:
                     "start_date": start_date,
                     "end_date": end_date,
                     "final_amount": final_amount if kind == "installment" else None,
+                    "manual_transfer": self.clean_manual_transfer(item.get("manual_transfer")),
                     "checked_months": self.clean_month_list(item.get("checked_months")),
                     "skipped_months": self.clean_month_list(item.get("skipped_months")),
                     "deferred_months": self.clean_deferred_months(item.get("deferred_months")),
@@ -1238,6 +1274,7 @@ class FinanceService:
                 if final_amount <= 0:
                     raise FinanceError("Abschlagssumme ist ungültig.")
 
+        manual_transfer = self.validate_manual_transfer_payload(payload)
         return {
             "kind": kind,
             "account_id": account_id,
@@ -1248,8 +1285,36 @@ class FinanceService:
             "start_date": start_date,
             "end_date": end_date,
             "final_amount": final_amount,
+            "manual_transfer": manual_transfer,
             "checked_months": self.clean_month_list(payload.get("checked_months")),
         }
+
+    def validate_manual_transfer_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        enabled = parse_bool(payload.get("manual_transfer_enabled"), False)
+        transfer_type = str(payload.get("manual_transfer_type") or "private").strip().lower()
+        if transfer_type not in ("private", "company"):
+            transfer_type = "private"
+        details = {
+            "enabled": enabled,
+            "type": transfer_type,
+            "first_name": str(payload.get("manual_transfer_first_name") or "").strip(),
+            "last_name": str(payload.get("manual_transfer_last_name") or "").strip(),
+            "company_name": str(payload.get("manual_transfer_company_name") or "").strip(),
+            "iban": str(payload.get("manual_transfer_iban") or "").strip().upper().replace(" ", ""),
+            "bic": str(payload.get("manual_transfer_bic") or "").strip().upper().replace(" ", ""),
+            "purpose": str(payload.get("manual_transfer_purpose") or "").strip(),
+        }
+        if not enabled:
+            return {**details, "enabled": False}
+        if transfer_type == "private" and (not details["first_name"] or not details["last_name"]):
+            raise FinanceError("Bitte Name und Nachname des Empfängers eintragen.")
+        if transfer_type == "company" and not details["company_name"]:
+            raise FinanceError("Bitte den Namen des Unternehmens eintragen.")
+        if not details["iban"]:
+            raise FinanceError("Bitte die IBAN eintragen.")
+        if not details["purpose"]:
+            raise FinanceError("Bitte den Verwendungszweck eintragen.")
+        return details
 
     def set_recurring_checked(self, recurring_id: str, month: str, checked: bool) -> None:
         data = self.load_payload()
@@ -1274,6 +1339,8 @@ class FinanceService:
         data = self.load_payload()
         if "currency" in payload:
             data["settings"]["currency"] = str(payload.get("currency") or "EUR").strip().upper()
+        if "theme" in payload:
+            data["settings"]["theme"] = self.normalize_theme_id(payload.get("theme"))
         for key in ("autostart_enabled", "autostart_start_hidden", "auto_update_check"):
             if key in payload:
                 data["settings"][key] = parse_bool(payload.get(key), False)

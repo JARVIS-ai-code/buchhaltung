@@ -25,6 +25,13 @@ const REMINDER_SNOOZED_DATE_KEY = "finanz-cockpit-reminder-snoozed-date";
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MONTH_LABELS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 const ACCOUNT_COLOR_PRESETS = ["#4A3C1A", "#8B6914", "#C9A227", "#D4B896", "#F5E6C8", "#6B581B", "#A9892A", "#BDA16E"];
+const THEME_OPTIONS = [
+  { value: "autumn", label: "Herbst" },
+  { value: "monochrome", label: "Monochrom" },
+  { value: "deep-ocean", label: "Deep Ocean" },
+  { value: "mint-forest", label: "Mint & Forest" },
+  { value: "ice-cyan", label: "Ice & Cyan" }
+];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -236,11 +243,15 @@ function getCalendarOverlay(control = null) {
 }
 
 function closeDatePicker() {
-  const overlay = state.activeDateOverlay || getCalendarOverlay();
-  if (overlay) {
+  const overlays = new Set([
+    state.activeDateOverlay,
+    getCalendarOverlay(),
+    ...$$(".calendar-overlay")
+  ].filter(Boolean));
+  overlays.forEach((overlay) => {
     overlay.hidden = true;
     overlay.innerHTML = "";
-  }
+  });
   const trigger = state.activeDateControl ? $("[data-date-trigger]", state.activeDateControl) : null;
   if (trigger) trigger.setAttribute("aria-expanded", "false");
   state.activeDateOverlay = null;
@@ -295,6 +306,26 @@ function hasUnsavedDraft() {
       || state.activeDropdownCombo
       || $("[data-dirty='true']")
   );
+}
+
+function shouldRenderApiState(renderOption) {
+  if (typeof renderOption === "function") return Boolean(renderOption());
+  return renderOption !== false;
+}
+
+function applyApiState(nextState, renderOption = true) {
+  state.data = nextState;
+  state.selectedAccountId = nextState.selected_account_id;
+  state.analysisFilterAccount = nextState.analysis_filter_account;
+  applyTheme(nextState.settings?.theme);
+  if (shouldRenderApiState(renderOption)) {
+    render();
+  }
+}
+
+function applyTheme(theme) {
+  const allowed = new Set(THEME_OPTIONS.map((option) => option.value));
+  document.body.dataset.theme = allowed.has(theme) ? theme : "autumn";
 }
 
 function positionCalendarPanel(control, panel) {
@@ -444,11 +475,15 @@ function getDropdownOverlay(combo = null) {
 }
 
 function closeSelectMenu() {
-  const overlay = state.activeDropdownOverlay || getDropdownOverlay();
-  if (overlay) {
+  const overlays = new Set([
+    state.activeDropdownOverlay,
+    getDropdownOverlay(),
+    ...$$(".dropdown-overlay")
+  ].filter(Boolean));
+  overlays.forEach((overlay) => {
     overlay.hidden = true;
     overlay.innerHTML = "";
-  }
+  });
   state.activeDropdownOverlay = null;
   state.activeDropdownCombo = null;
   $$(".select-trigger[aria-expanded='true']").forEach((trigger) => {
@@ -545,7 +580,7 @@ function openSelectMenu(combo) {
 }
 
 function toggleSelectMenu(combo) {
-  const overlay = getDropdownOverlay();
+  const overlay = getDropdownOverlay(combo);
   if (!overlay) return;
   const trigger = $(".select-trigger", combo);
   const isOpen = Boolean(trigger && trigger.getAttribute("aria-expanded") === "true");
@@ -757,23 +792,16 @@ async function api(path, options = {}) {
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Aktion fehlgeschlagen.");
   if (payload.state) {
-    state.data = payload.state;
-    state.selectedAccountId = payload.state.selected_account_id;
-    state.analysisFilterAccount = payload.state.analysis_filter_account;
-    render();
+    applyApiState(payload.state, options.render);
   }
   return payload;
 }
 
-async function loadState() {
+async function loadState(options = {}) {
   const params = new URLSearchParams();
   if (state.selectedAccountId) params.set("selected_account_id", state.selectedAccountId);
   if (state.analysisFilterAccount) params.set("analysis_filter_account", state.analysisFilterAccount);
-  const payload = await api(`/api/state?${params.toString()}`);
-  state.data = payload.state;
-  state.selectedAccountId = payload.state.selected_account_id;
-  state.analysisFilterAccount = payload.state.analysis_filter_account;
-  render();
+  await api(`/api/state?${params.toString()}`, options);
 }
 
 function postContext(body = {}) {
@@ -828,6 +856,88 @@ function selectField(label, name, options, selected = "") {
       </div>
     </label>
   `;
+}
+
+function manualTransferDefaults(rec = null) {
+  const transfer = rec?.manual_transfer || {};
+  const type = transfer.type === "company" ? "company" : "private";
+  return {
+    enabled: Boolean(transfer.enabled),
+    type,
+    first_name: transfer.first_name || "",
+    last_name: transfer.last_name || "",
+    company_name: transfer.company_name || "",
+    iban: transfer.iban || "",
+    bic: transfer.bic || "",
+    purpose: transfer.purpose || ""
+  };
+}
+
+function manualTransferField(rec = null) {
+  const transfer = manualTransferDefaults(rec);
+  const enabledAttr = transfer.enabled ? "checked" : "";
+  const privateAttr = transfer.type === "private" ? "checked" : "";
+  const companyAttr = transfer.type === "company" ? "checked" : "";
+  return `
+    <section class="manual-transfer-block" data-manual-transfer>
+      <label class="manual-transfer-switch">
+        <input type="checkbox" name="manual_transfer_enabled" data-manual-transfer-toggle ${enabledAttr}>
+        <span>Manuelle Überweisung</span>
+      </label>
+      <div class="manual-transfer-panel" data-manual-transfer-panel ${transfer.enabled ? "" : "hidden"}>
+        <div class="transfer-segment" data-manual-transfer-segment>
+          <label>
+            <input type="radio" name="manual_transfer_type" value="private" data-manual-transfer-type ${privateAttr}>
+            <span>Privatperson</span>
+          </label>
+          <label>
+            <input type="radio" name="manual_transfer_type" value="company" data-manual-transfer-type ${companyAttr}>
+            <span>Unternehmen</span>
+          </label>
+        </div>
+        <div class="manual-transfer-recipient" data-manual-transfer-recipient="private">
+          ${field("Name des Empfängers", "manual_transfer_first_name", transfer.first_name, "data-manual-transfer-input=\"private\" data-required-when-active")}
+          ${field("Nachname des Empfängers", "manual_transfer_last_name", transfer.last_name, "data-manual-transfer-input=\"private\" data-required-when-active")}
+        </div>
+        <div class="manual-transfer-recipient" data-manual-transfer-recipient="company">
+          ${field("Name des Unternehmens", "manual_transfer_company_name", transfer.company_name, "data-manual-transfer-input=\"company\" data-required-when-active")}
+        </div>
+        <div class="manual-transfer-payment-fields">
+          ${field("IBAN", "manual_transfer_iban", transfer.iban, "data-manual-transfer-input=\"common\" data-required-when-active autocomplete=\"off\"")}
+          ${field("BIC (Optional)", "manual_transfer_bic", transfer.bic, "data-manual-transfer-input=\"common\" autocomplete=\"off\"")}
+          ${field("Verwendungszweck", "manual_transfer_purpose", transfer.purpose, "data-manual-transfer-input=\"common\" data-required-when-active")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function syncManualTransferControls(root) {
+  const block = $("[data-manual-transfer]", root);
+  if (!block) return;
+  const enabled = Boolean($("[data-manual-transfer-toggle]", block)?.checked);
+  const type = $("[data-manual-transfer-type]:checked", block)?.value === "company" ? "company" : "private";
+  const panel = $("[data-manual-transfer-panel]", block);
+  if (panel) panel.hidden = !enabled;
+  $$("[data-manual-transfer-type]", block).forEach((input) => {
+    input.disabled = !enabled;
+  });
+  $$("[data-manual-transfer-recipient]", block).forEach((section) => {
+    section.hidden = !enabled || section.dataset.manualTransferRecipient !== type;
+  });
+  $$("[data-manual-transfer-input]", block).forEach((input) => {
+    const group = input.dataset.manualTransferInput;
+    const active = enabled && (group === "common" || group === type);
+    input.disabled = !active;
+    input.required = active && input.hasAttribute("data-required-when-active");
+  });
+}
+
+function bindManualTransferControls(root) {
+  const block = $("[data-manual-transfer]", root);
+  if (!block) return;
+  block.addEventListener("change", () => syncManualTransferControls(root));
+  syncManualTransferControls(root);
 }
 
 function card(title, subtitle, content, span = 6, headerAction = "") {
@@ -1295,6 +1405,136 @@ function renderExpenses() {
   `;
 }
 
+function manualTransferEnabled(rec) {
+  return Boolean(rec?.manual_transfer?.enabled);
+}
+
+function manualTransferTypeLabel(rec) {
+  return rec?.manual_transfer?.type === "company" ? "Unternehmen" : "Privatperson";
+}
+
+function manualTransferBadge(rec) {
+  if (!manualTransferEnabled(rec)) return "";
+  return `<span class="manual-transfer-badge">Manuelle Überweisung</span>`;
+}
+
+function setRecurringToggleVisual(target, checked) {
+  target.checked = checked;
+  const label = target.closest(".check-pill")?.querySelector("span");
+  if (label) label.textContent = checked ? "Erledigt" : "Offen";
+}
+
+function manualTransferDetailsHtml(rec) {
+  const transfer = manualTransferDefaults(rec);
+  const recipientRows = transfer.type === "company"
+    ? [{ label: "Unternehmen", value: transfer.company_name }]
+    : [
+        { label: "Name", value: transfer.first_name },
+        { label: "Nachname", value: transfer.last_name }
+      ];
+  const rows = [
+    { label: "Typ", value: manualTransferTypeLabel(rec) },
+    ...recipientRows,
+    { label: "IBAN", value: transfer.iban },
+    { label: "BIC", value: transfer.bic || "-" },
+    { label: "Verwendungszweck", value: transfer.purpose }
+  ];
+  return `
+    <div class="manual-transfer-details">
+      ${rows.map((row) => `
+        <div>
+          <span>${escapeHtml(row.label)}</span>
+          <strong>${escapeHtml(row.value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function openManualTransferDetailsModal(rec) {
+  return new Promise((resolve) => {
+    const modal = $("#modal");
+    let settled = false;
+    const finish = (value) => {
+      settled = true;
+      modal.close();
+      resolve(value);
+    };
+    closeSelectMenu();
+    closeDatePicker();
+    if (modal.open) modal.close();
+    modal.innerHTML = `
+      <form method="dialog">
+        <h2>Überweisungsdetails</h2>
+        ${manualTransferDetailsHtml(rec)}
+        <div class="actions">
+          <button class="solid" value="done" type="button" data-manual-transfer-done>Fertig</button>
+        </div>
+      </form>
+    `;
+    modal.addEventListener("close", () => {
+      closeDatePicker();
+      closeSelectMenu();
+      clearDraftState(modal);
+      if (!settled) resolve(false);
+    }, { once: true });
+    $("[data-manual-transfer-done]", modal).addEventListener("click", () => finish(true));
+    modal.showModal();
+  });
+}
+
+function openManualTransferCheckModal(rec) {
+  return new Promise((resolve) => {
+    const modal = $("#modal");
+    let settled = false;
+    const finish = (value) => {
+      settled = true;
+      modal.close();
+      resolve(value);
+    };
+    closeSelectMenu();
+    closeDatePicker();
+    if (modal.open) modal.close();
+    modal.innerHTML = `
+      <form method="dialog">
+        <h2>Manuelle Überweisung</h2>
+        <div class="subtitle">Wurde diese manuelle Überweisung getätigt?</div>
+        <div class="actions">
+          <button class="solid" value="yes" type="button" data-manual-transfer-answer="yes">Ja</button>
+          <button class="ghost" value="no" type="button" data-manual-transfer-answer="no">Nein</button>
+        </div>
+      </form>
+    `;
+    modal.addEventListener("close", () => {
+      closeDatePicker();
+      closeSelectMenu();
+      clearDraftState(modal);
+      if (!settled) resolve(null);
+    }, { once: true });
+    $$("[data-manual-transfer-answer]", modal).forEach((button) => {
+      button.addEventListener("click", () => finish(button.dataset.manualTransferAnswer || null));
+    });
+    modal.showModal();
+  });
+}
+
+async function confirmManualTransferDone(rec) {
+  const decision = await openManualTransferCheckModal(rec);
+  if (decision === "yes") return true;
+  if (decision === "no") {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    return openManualTransferDetailsModal(rec);
+  }
+  return false;
+}
+
+async function setRecurringChecked(recurringId, month, checked) {
+  await api(`/api/recurring/${recurringId}/checked`, {
+    method: "POST",
+    body: postContext({ month, checked })
+  });
+}
+
 function recurringManagementRows() {
   const visibleMonth = state.data.visible_month || "";
   return [...(state.data.recurring || [])].sort((a, b) => {
@@ -1315,8 +1555,8 @@ function recurringManagementRow(rec) {
   return `
     <div class="recurring-management-row" ${accountGlowStyle(rec.account_id)}>
       <div>
-        <div class="row-title">${escapeHtml(rec.description)}</div>
-        <div class="row-sub">${escapeHtml(account)} | ${freq} am ${String(rec.day).padStart(2, "0")}. | Start ${escapeHtml(rec.start_date || "-")}${rec.end_date ? ` | Ende ${escapeHtml(rec.end_date)}` : ""}</div>
+        <div class="row-title">${escapeHtml(rec.description)}${manualTransferBadge(rec)}</div>
+        <div class="row-sub">${escapeHtml(account)} | ${freq} am ${String(rec.day).padStart(2, "0")}. | Start ${escapeHtml(rec.start_date || "-")}${rec.end_date ? ` | Ende ${escapeHtml(rec.end_date)}` : ""}${manualTransferEnabled(rec) ? ` | ${manualTransferTypeLabel(rec)}` : ""}</div>
       </div>
       <strong>${escapeHtml(formatRecAmount(rec))}</strong>
       <button class="icon-button" title="Bearbeiten" data-action="edit-recurring" data-id="${escapeHtml(rec.id)}">✎</button>
@@ -1343,8 +1583,8 @@ function recurringRow(rec) {
         <span>${checked ? "Erledigt" : "Offen"}</span>
       </label>
       <div>
-        <div class="row-title">${escapeHtml(rowTitle)}</div>
-        <div class="row-sub">${escapeHtml(account)} | ${dateInfo}</div>
+        <div class="row-title">${escapeHtml(rowTitle)}${manualTransferBadge(rec)}</div>
+        <div class="row-sub">${escapeHtml(account)} | ${dateInfo}${manualTransferEnabled(rec) ? ` | ${manualTransferTypeLabel(rec)}` : ""}</div>
       </div>
       <strong>${escapeHtml(amount)}</strong>
       <button class="icon-button" title="Diesen Monat bearbeiten" data-action="edit-current-payment" data-id="${escapeHtml(currentEditId)}" ${currentEditId ? "" : "disabled"}>✎</button>
@@ -1446,6 +1686,7 @@ function renderSettings() {
           <form id="settings-form" class="settings-form">
             <div class="settings-fields">
               ${field("Währung", "currency", d.settings.currency || "EUR")}
+              ${selectField("Farbschema", "theme", THEME_OPTIONS, d.settings.theme || "autumn")}
               ${field("Update-Prüfung alle Stunden", "update_check_interval_hours", d.settings.update_check_interval_hours || 6, "type=\"number\" min=\"1\" max=\"168\"")}
             </div>
             <div class="settings-toggles">
@@ -1541,6 +1782,7 @@ function renderSettings() {
     payload.autostart_enabled = Boolean(form.elements.autostart_enabled.checked);
     payload.autostart_start_hidden = payload.autostart_enabled && Boolean(form.elements.autostart_start_hidden.checked);
     payload.auto_update_check = Boolean(form.elements.auto_update_check.checked);
+    payload.theme = payload.theme || "autumn";
     await api("/api/settings", { method: "POST", body: postContext(payload) });
     showToast("Einstellungen gespeichert.");
   });
@@ -1604,6 +1846,7 @@ function openModal(title, html, onSubmit) {
     }
   });
   modal.showModal();
+  return modal;
 }
 
 function afterNextFrame() {
@@ -1661,8 +1904,9 @@ function recurringModal(rec = null, kind = "standard") {
       ${isInstallment ? datePickerField("Enddatum", "end_date", rec?.end_date || defaultMonthDate()) : ""}
     </div>
     ${isInstallment ? field("Abschlagssumme letzte Zahlung", "final_amount", rec?.final_amount || "", "inputmode=\"decimal\"") : ""}
+    ${manualTransferField(rec)}
   `;
-  openModal(isInstallment ? "Abzahlung" : "Dauerzahlung", html, async (payload) => {
+  const modal = openModal(isInstallment ? "Abzahlung" : "Dauerzahlung", html, async (payload) => {
     payload.kind = isInstallment ? "installment" : "standard";
     payload.frequency = isInstallment ? "monthly" : payload.frequency;
     if (rec) {
@@ -1675,6 +1919,7 @@ function recurringModal(rec = null, kind = "standard") {
       showToast(isInstallment ? "Abzahlung gespeichert." : "Dauerzahlung gespeichert.");
     }
   });
+  bindManualTransferControls(modal);
 }
 
 function openSettingsSetup(selector) {
@@ -2001,13 +2246,23 @@ document.addEventListener("change", async (event) => {
   }
   if (target.dataset?.action !== "toggle-recurring") return;
   try {
-    await api(`/api/recurring/${target.dataset.id}/checked`, {
-      method: "POST",
-      body: postContext({ month: target.dataset.month || state.data.visible_month, checked: target.checked })
-    });
+    const statusMonth = target.dataset.month || state.data.visible_month;
+    const rec = (state.data.selected_recurring || []).find((item) => (
+      item.id === target.dataset.id && (item.status_month || state.data.visible_month) === statusMonth
+    ));
+    if (target.checked && manualTransferEnabled(rec)) {
+      setRecurringToggleVisual(target, false);
+      const shouldMarkDone = await confirmManualTransferDone(rec);
+      if (!shouldMarkDone) return;
+      setRecurringToggleVisual(target, true);
+      await setRecurringChecked(target.dataset.id, statusMonth, true);
+      showToast("Zahlung erledigt.");
+      return;
+    }
+    await setRecurringChecked(target.dataset.id, statusMonth, target.checked);
     showToast(target.checked ? "Zahlung erledigt." : "Zahlung wieder offen.");
   } catch (error) {
-    target.checked = !target.checked;
+    setRecurringToggleVisual(target, !target.checked);
     showToast(error.message);
   }
 });
@@ -2028,7 +2283,8 @@ loadState()
 async function periodicTick() {
   try {
     if (hasUnsavedDraft()) return;
-    await loadState();
+    await loadState({ render: () => !hasUnsavedDraft() });
+    if (hasUnsavedDraft()) return;
     maybeShowReminderPopup(false);
     await checkForUpdate();
   } catch (error) {
@@ -2045,6 +2301,7 @@ async function checkForUpdate(force = false) {
   const payload = await api("/api/update/check", { method: "POST", body: {} });
   const update = payload.update;
   if (!update?.is_newer || !update.asset || state.announcedUpdateTag === update.latest) return;
+  if (hasUnsavedDraft()) return;
   state.announcedUpdateTag = update.latest;
   if (confirm(`Update ${update.latest} installieren?`)) {
     await startUpdateInstall(update.asset);

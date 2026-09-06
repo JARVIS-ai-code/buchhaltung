@@ -1,0 +1,394 @@
+/*
+  Zentrale Theme-Steuerung.
+  Pro Theme reichen diese elf Referenzfarben:
+  --theme-bg      = App-Hintergrund
+  --theme-surface = größere Flächen und Sidebar
+  --theme-soft    = dezente Hinterlegungen, Karten, Reihen
+  --theme-text    = Schriftfarbe
+  --theme-muted   = Schriftfarbe für Unterschriften und Hilfstexte
+  --theme-accent  = aktive Buttons, Fokus, Markierungen
+  --theme-overdue = Container für überfällige Zahlungen auf dem Dashboard
+  --theme-income  = Anzeige "Einnahmen"
+  --theme-expense = Anzeige "Ausgaben"
+  --theme-balance = Anzeige "Übrig"
+  --theme-open    = Anzeige "Offen"
+
+  Wenn du hier eine Referenzfarbe änderst, übernimmt die gesamte Oberfläche diese Farbe über die darunterliegenden Rollen.
+*/
+
+:root,
+body[data-theme="autumn"] {
+  --theme-bg: #EEDECF;
+  --theme-surface: #DFCEBE;
+  --theme-soft: #C2AF9D;
+  --theme-text: #2B1A0E;
+  --theme-muted: #6E5C4E;
+  --theme-accent: #B85A1C;
+  --theme-overdue: #8B261E;
+
+  --theme-income: #3E5F3B;
+  --theme-expense: #8B261E;
+  --theme-balance: #4E6E4A;
+  --theme-open: #B57C1E;
+}
+
+
+body[data-theme="monochrome"] {
+  --theme-bg: #2c2c2c;
+  --theme-surface: #b9b8b8;
+  --theme-soft: #b8b8b8;
+  --theme-text: #2c2c2c;
+  --theme-muted: #2c2c2c;
+  --theme-accent: #d5d8d7;
+  --theme-overdue: #979797;
+
+  --theme-income: #5fa55f;
+  --theme-expense: #a12a2a;
+  --theme-balance: #e9d044;
+  --theme-open: #969e21;
+}
+
+body[data-theme="deep-ocean"] {
+  --theme-bg: #0B132B;
+  --theme-surface: #1C2541;
+  --theme-soft: #3A506B;
+  --theme-text: #FFFFFF;
+  --theme-muted: #BBD5E1;
+  --theme-accent: #48CAE4;
+  --theme-overdue: #55d2f1;
+
+  --theme-income: #16cc3d;
+  --theme-expense: #ac4838;
+  --theme-balance: #52c2d8;
+  --theme-open: #dba952;
+}
+
+body[data-theme="mint-forest"] {
+  --theme-bg: #0F1411;
+  --theme-surface: #1C1A16;
+  --theme-soft: #38342C;
+  --theme-text: #E8ECE9;
+  --theme-muted: #878A88;
+  --theme-accent: #2EC4B6;
+  --theme-overdue: #D65A31;
+
+  --theme-income: #40C1AC;
+  --theme-expense: #E76F51;
+  --theme-balance: #2EC4B6;
+  --theme-open: #F4A261;
+}
+
+
+body[data-theme="ice-cyan"] {
+  --theme-bg: #EAEBF0;
+  --theme-surface: #FFFFFF;
+  --theme-soft: #D2D4DC;
+  --theme-text: #181922;
+  --theme-muted: #6C6F81;
+  --theme-accent: #00F5D4;
+  --theme-overdue: #128392;
+
+  --theme-income: #00B4D8;
+  --theme-expense: #FF0055;
+  --theme-balance: #7209B7;
+  --theme-open: #FFB703;
+}
+
+:root,
+body[data-theme] {
+  --pale-pastry: var(--theme-bg);
+  --crepe: var(--theme-surface);
+  --mustard-seed: var(--theme-accent);
+  --muddy-brown: color-mix(in srgb, var(--theme-text) 72%, var(--theme-accent));
+  --black-stone: var(--theme-text);
+  --mahogany: var(--theme-text);
+  --chestnut: var(--muddy-brown);
+  --leather: var(--theme-accent);
+  --parchment: var(--theme-bg);
+  --juniper: var(--theme-accent);
+  --juniper-dark: var(--muddy-brown);
+  --caramel: var(--theme-bg);
+  --cream: var(--theme-bg);
+  --cinnamon: var(--muddy-brown);
+  --cayenne: var(--theme-accent);
+  --green: var(--theme-accent);
+  --green-dark: var(--muddy-brown);
+  --bg: var(--theme-bg);
+  --surface: color-mix(in srgb, var(--theme-surface) 84%, transparent);
+  --card: color-mix(in srgb, var(--theme-surface) 78%, transparent);
+  --card-soft: color-mix(in srgb, var(--theme-soft) 54%, transparent);
+  --line: color-mix(in srgb, var(--theme-text) 18%, transparent);
+  --line-strong: color-mix(in srgb, var(--theme-text) 34%, transparent);
+  --text: var(--theme-text);
+  --muted: var(--theme-muted);
+  --subtle: color-mix(in srgb, var(--theme-text) 86%, var(--theme-accent));
+  --violet: var(--theme-accent);
+  --violet-2: color-mix(in srgb, var(--theme-accent) 72%, var(--theme-text));
+  --cyan: var(--theme-accent);
+  --mint: var(--theme-accent);
+  --danger: color-mix(in srgb, var(--theme-text) 78%, #b00020);
+  --warn: color-mix(in srgb, var(--theme-accent) 74%, var(--theme-text));
+  --hot: var(--theme-accent);
+  --kpi-positive: var(--theme-income);
+  --kpi-negative: var(--theme-expense);
+  --kpi-balance: var(--theme-balance);
+  --kpi-warning: var(--theme-open);
+  --shadow-soft: 0 18px 55px color-mix(in srgb, var(--theme-text) 18%, transparent);
+  --shadow-lift: 0 26px 80px color-mix(in srgb, var(--theme-text) 25%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--theme-accent) 82%, transparent);
+  --scrollbar-thumb-hover: var(--theme-accent);
+  --scrollbar-track: color-mix(in srgb, var(--theme-text) 10%, transparent);
+  --scrollbar-border: color-mix(in srgb, var(--theme-bg) 92%, transparent);
+  --overdue-surface: color-mix(in srgb, var(--theme-overdue) 34%, var(--theme-surface));
+  --overdue-line: color-mix(in srgb, var(--theme-overdue) 42%, transparent);
+  --overdue-text: color-mix(in srgb, var(--theme-text) 82%, var(--theme-overdue));
+}
+
+* {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-color: var(--scrollbar-border);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+body::before {
+  background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--theme-surface) 72%, transparent), transparent 31%),
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--theme-accent) 26%, transparent), transparent 28%),
+    linear-gradient(145deg, var(--theme-surface), var(--theme-bg) 52%, color-mix(in srgb, var(--theme-soft) 82%, var(--theme-bg)));
+}
+
+body::after {
+  opacity: 0.2;
+  background:
+    linear-gradient(color-mix(in srgb, var(--theme-text) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-text) 14%, transparent) 1px, transparent 1px);
+}
+
+input,
+select,
+.select-trigger,
+.date-trigger,
+.calendar-nav {
+  color: var(--text);
+  background: color-mix(in srgb, var(--theme-surface) 82%, transparent);
+  border-color: var(--line);
+}
+
+input:focus,
+select:focus,
+.select-trigger[aria-expanded="true"],
+.date-trigger:focus-visible,
+.date-trigger[aria-expanded="true"] {
+  background: var(--theme-surface);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+.sidebar,
+.main-surface,
+.live-hint,
+.settings-maintenance {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-surface) 72%, transparent), color-mix(in srgb, var(--theme-bg) 84%, transparent)),
+    var(--surface);
+}
+
+.main-surface::before {
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--theme-accent) 12%, transparent), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-text) 8%, transparent), transparent 38%);
+}
+
+.brand {
+  border-bottom-color: var(--line);
+}
+
+.brand::after {
+  background: linear-gradient(90deg, var(--theme-accent), var(--muddy-brown), transparent);
+}
+
+.brand-title,
+.page-title h1 {
+  background: linear-gradient(90deg, var(--theme-text), var(--muddy-brown) 58%, var(--theme-accent));
+  background-clip: text;
+  color: transparent;
+}
+
+.nav-button,
+.chip,
+.ghost,
+.icon-button,
+.settings-toggle,
+.manual-transfer-block,
+.manual-transfer-details > div,
+.row,
+.source-row,
+.account-row,
+.expense-row,
+.recurring-row,
+.recurring-management-row,
+.overdue-dashboard-row,
+.reminder-row,
+.month-current,
+.calendar-day,
+.empty {
+  color: var(--subtle);
+  background: var(--card-soft);
+  border-color: var(--line);
+}
+
+.nav-button span {
+  color: var(--muddy-brown);
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+}
+
+.nav-button:hover,
+.chip:hover,
+.ghost:hover,
+.icon-button:hover {
+  background: color-mix(in srgb, var(--theme-accent) 16%, var(--card-soft));
+  border-color: var(--line-strong);
+}
+
+.card,
+.settings-panel,
+.dropdown-menu,
+.calendar-panel,
+.modal,
+.toast {
+  color: var(--text);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-surface) 54%, transparent), transparent 56%),
+    var(--card);
+  border-color: var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+.reminder {
+  color: var(--overdue-text);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--theme-overdue) 34%, var(--theme-surface)), color-mix(in srgb, var(--theme-overdue) 18%, var(--theme-bg)));
+  border-color: var(--overdue-line);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--theme-overdue) 22%, transparent);
+}
+
+.reminder strong {
+  color: color-mix(in srgb, var(--theme-overdue) 64%, var(--theme-text));
+}
+
+.solid,
+.nav-button.active,
+.chip.active,
+.manual-transfer-badge,
+.transfer-segment input:checked + span,
+.dropdown-menu button:hover,
+.dropdown-menu button[aria-selected="true"],
+.calendar-day.active {
+  color: var(--theme-bg);
+  background: linear-gradient(135deg, var(--muddy-brown), var(--theme-accent));
+  border-color: var(--muddy-brown);
+}
+
+.nav-button.active span {
+  color: var(--theme-bg);
+  background: color-mix(in srgb, var(--theme-bg) 18%, transparent);
+}
+
+.nav-button.active::before {
+  background: var(--theme-accent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent) 54%, transparent);
+}
+
+.danger-button {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--theme-surface));
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+}
+
+.danger-button:hover {
+  color: var(--theme-bg);
+  background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 72%, var(--muddy-brown)));
+  border-color: var(--danger);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.settings-toggle input,
+.manual-transfer-switch input {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--theme-text) 12%, transparent);
+}
+
+.settings-toggle input:checked,
+.manual-transfer-switch input:checked {
+  border-color: var(--theme-accent);
+  background: linear-gradient(90deg, var(--muddy-brown), var(--theme-accent));
+}
+
+.settings-version {
+  border-top-color: var(--line);
+}
+
+.settings-version strong,
+.settings-toggle-copy strong {
+  color: var(--text);
+}
+
+.settings-toggle-copy small,
+.settings-save-row span {
+  color: var(--muted);
+}
+
+.settings-eyebrow,
+.settings-section-label,
+.select-trigger strong,
+.date-trigger strong {
+  color: var(--theme-accent);
+}
+
+.settings-hero-meta span,
+.settings-count,
+.date-trigger strong {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-surface));
+  border-color: color-mix(in srgb, var(--theme-accent) 28%, transparent);
+}
+
+.settings-hero-meta strong,
+.settings-count {
+  color: var(--theme-accent);
+}
+
+.color-control {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--picker-color, var(--theme-accent)) 18%, var(--theme-surface)),
+    color-mix(in srgb, var(--theme-surface) 78%, transparent));
+  border-color: color-mix(in srgb, var(--picker-color, var(--theme-accent)) 46%, var(--line));
+}
+
+/* Alle Unterschriften und Hilfstexte zentral über --theme-muted steuern. */
+.brand-subtitle,
+.muted,
+.field label,
+.subtitle,
+.page-title p,
+.row-sub,
+.settings-hero p,
+.settings-panel-head p,
+.settings-toggle-copy small,
+.settings-save-row span,
+.settings-version,
+.manual-transfer-details span,
+.update-progress-meta {
+  color: var(--theme-muted);
+}
